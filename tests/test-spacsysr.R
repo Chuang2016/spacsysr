@@ -1,0 +1,242 @@
+## Base-R test suite for spacsysr (runs under R CMD check via tests/).
+## Uses only stopifnot() so the package keeps zero dependencies.
+
+library(spacsysr)
+
+ok <- function(msg) cat("ok -", msg, "\n")
+
+## --- response functions ------------------------------------------------
+stopifnot(all.equal(f_temp_q10(20), 1))
+stopifnot(all.equal(f_temp_q10(30, q10 = 2, t_base = 20), 2))
+ok("f_temp_q10")
+
+fw <- f_water_decom(c(5, 15, 25, 42, 50), theta_s = 50, theta_m = 8,
+                    delta_theta1 = 10, delta_theta2 = 5)
+stopifnot(fw[1] == 0, fw[3] == 1, fw[5] < 1, all(fw >= 0 & fw <= 1))
+ok("f_water_decom")
+
+stopifnot(all.equal(wfps(50, 1.325), 1))          # theta = porosity -> 1
+stopifnot(wfps(25, 1.3, 2.65) > 0.4,
+          wfps(25, 1.3, 2.65) < 0.6)
+ok("wfps")
+
+stopifnot(all.equal(michaelis_menten(10, 10), 0.5))
+stopifnot(michaelis_menten(0, 5) == 0, michaelis_menten(1e6, 5) > 0.999)
+ok("michaelis_menten")
+
+stopifnot(f_water_nitrif(0.5) >= 0.6)
+stopifnot(all.equal(f_ph_nitrif(6.6), 1))
+stopifnot(f_ph_nitrif(4) < f_ph_nitrif(6.6))
+ok("nitrification response functions")
+
+stopifnot(all.equal(f_inhib_nitrif(150), 1))      # capped after 120 d
+stopifnot(f_inhib_nitrif(0) < 0.1)                # strong inhibition at d=0
+ok("f_inhib_nitrif")
+
+fwd <- f_water_denitrif(c(30, 44, 45), theta_s = 45, delta_theta = 10)
+stopifnot(fwd[1] == 0, fwd[3] == 1, fwd[2] > 0, fwd[2] < 1)
+ok("f_water_denitrif")
+
+ph_seq <- seq(4, 9, by = 1)
+stopifnot(all(vapply(1:4, function(s) all(f_ph_denitrif(ph_seq, s) >= 0 &
+                                         f_ph_denitrif(ph_seq, s) <= 1),
+                     logical(1))))
+stopifnot(f_ph_denitrif(6.2, 3) == 1)   # Gaussian peak at pH 6.2
+fine <- seq(4, 9, by = 0.1)
+stopifnot(which.max(f_ph_denitrif(fine, 3)) == which.min(abs(fine - 6.2)))
+ok("f_ph_denitrif")
+
+af <- anaerobic_fraction(c(0.5, 0.75, 0.95))
+stopifnot(af[1] == 0, af[3] == 1, af[2] > 0, af[2] < 1)
+ok("anaerobic_fraction")
+
+## --- decomposition ------------------------------------------------------
+d <- decomp_rate(1000, 0.01, 1, 1)
+stopifnot(all.equal(d, 10))
+stopifnot(all.equal(decomp_rate(1000, 0.01, 0.5, 0.5, 0.8, 0.9), 2))
+ok("decomp_rate")
+
+## --- nitrification ---------------------------------------------------------
+n1 <- nitrif_simplified(nh4 = 10, no3 = 2, knitri = 0.2, f_temp = 1,
+                        f_water = 1, f_ph = 1, d_since_n = 200)
+stopifnot(n1 > 0)
+n0 <- nitrif_simplified(nh4 = 1, no3 = 5, knitri = 0.2, f_temp = 1,
+                        f_water = 1, f_ph = 1)
+stopifnot(n0 == 0)                                # NH4 <= NO3 -> no nitrification
+ok("nitrif_simplified")
+
+gr <- nitrifier_growth(bn_prev = 1, gnitr = 0.5, dnitr = 0.05, fe = 0.6,
+                       f_temp = 1, f_water = 1, f_ph = 1,
+                       f_doc = 0.5, f_no3 = 0.5)
+stopifnot(gr$biomass > 0, gr$growth > 0, gr$death > 0, gr$respiration > 0)
+ok("nitrifier_growth")
+
+nm <- nitrif_microbial(0.5, 1, 1, 1, 1, 1, 0.5)
+stopifnot(all.equal(nm, 0.25))
+ok("nitrif_microbial")
+
+## --- denitrification ---------------------------------------------------------
+ds <- denitrif_simplified(no3 = 5, kdeni = 0.5, f_temp = 1, f_water = 1,
+                          n_half = 5)
+stopifnot(all.equal(ds, 0.25))
+ok("denitrif_simplified")
+
+dm <- denitrif_microbial(
+  bd_prev = 1, n_oxides = c(no3 = 10, no2 = 1, no = 0.5, n2o = 0.2),
+  doc = 100,
+  params = list(gd = c(0.8, 0.6, 0.5, 0.3), ni50 = 2, doc_km50 = 50,
+                yc = 0.503, yc_i = rep(0.4, 4), mc = 0.02,
+                mn_i = rep(0.01, 4), f_temp = 1, f_ph = rep(1, 4)))
+stopifnot(dm$biomass > 0, all(dm$consumption >= 0),
+          length(dm$consumption) == 4)
+ok("denitrif_microbial")
+
+## --- gaseous ------------------------------------------------------------------
+stopifnot(all.equal(nitrif_n2o_emission(2, 1, 0.01), 0.02))
+stopifnot(all.equal(nitrif_no_emission(2, 1, 0.01), 0.02))
+dp <- penman_diffusivity(0.2, 20)
+stopifnot(dp > 0, dp < 2.6e-5)
+stopifnot(all.equal(nox_emission(1e-5, 3), 3e-5))
+ok("gaseous emissions")
+
+## --- volatilisation --------------------------------------------------------------
+v1 <- nh3_spreading(tan = 10, lai = 2, w_w = 2000)
+stopifnot(all.equal(v1, 0.02 * 10 + 200 * 10 * 2 / 2000))
+v2 <- nh3_after_spreading(tan = 5, w_w = 1000, infil = 2, evap = 3,
+                          precip = 0, epsilon = 0.5)
+stopifnot(v2$n_vol >= 0, v2$tan_new < 5, v2$w_w_new < 1000)
+ok("volatilisation")
+
+## --- methane ----------------------------------------------------------------------
+stopifnot(f_temp_ch4(20) > 0)
+r1 <- ch4_oxidation_rhizo(0.01, 1, 0.8, 50, ch4_con = 2, o2_con = 5,
+                          kr_ch4 = 1, ko2 = 1)
+stopifnot(r1 > 0)
+s1 <- ch4_oxidation_soil(1e-4, 1, 0.8, 1.3, ch4_con = 2, o2_con = 5,
+                         ks_ch4 = 1, ko2 = 1)
+stopifnot(s1 > 0)
+p1 <- ch4_production(r_root = 2, eta_inhib = 0.01, o2_con = 5)
+stopifnot(all.equal(p1, 0.3 * 2 / 1.05))
+ok("methane")
+
+## --- plant -------------------------------------------------------------------------
+stopifnot(all.equal(maint_respiration(100, q10 = 2, temp_air = 20,
+                                      t_base = 20), 100))
+stopifnot(all.equal(maint_respiration(100, q10 = 2, temp_air = 30,
+                                      t_base = 20), 200))
+gr2 <- growth_respiration(10)
+stopifnot(all.equal(gr2, (1 / (2.5 * 0.45 * 0.72) - 1) * 10))
+ok("plant respiration")
+
+## --- soil water ----------------------------------------------------------------------
+sw <- soil_water_step(theta_vol = c(0.4, 0.4), precip_mm = 20, pet_mm = 3,
+                      fc = c(0.38, 0.36), wp = c(0.18, 0.17),
+                      sat = c(0.5, 0.48), depth_mm = c(100, 150))
+stopifnot(all(sw$theta <= c(0.5, 0.48) + 1e-9))
+stopifnot(sw$aet_mm > 0, sw$drainage_mm >= 0, sw$runoff_mm >= 0)
+ok("soil_water_step")
+
+## --- driver ----------------------------------------------------------------------------
+weather <- load_example("paddy_weather")
+soil <- load_example("paddy_soil")
+stopifnot(nrow(weather) == 180, nrow(soil) == 4)
+
+out_s <- spacsys_run(weather[1:30, ], soil, method = "simplified")
+stopifnot(nrow(out_s) == 30, all(out_s$n2o >= 0), all(out_s$no >= 0))
+stopifnot(sum(out_s$n_denitrified) > 0)
+
+out_m <- spacsys_run(weather[1:30, ], soil, method = "microbial")
+stopifnot(nrow(out_m) == 30, all(out_m$n2o >= 0))
+ok("spacsys_run (simplified + microbial)")
+
+## fertiliser event path
+ev <- data.frame(date = weather$date[10], nh4_add = 5, no3_add = 2)
+out_f <- spacsys_run(weather[1:30, ], soil, method = "simplified",
+                     n_inputs = ev)
+stopifnot(out_f$n_nitrified[10] >= out_s$n_nitrified[10])
+ok("spacsys_run fertiliser events")
+
+cat("\nAll spacsysr tests passed.\n")
+
+## --- v0.2.0: photosynthesis ----------------------------------------------------
+stopifnot(all.equal(arrhenius_25(80, 58550, 25), 80))
+stopifnot(arrhenius_25(80, 58550, 35) > 80)          # warming accelerates
+jm <- arrhenius_25_mod(140, 43540, 200000, 650, 25)
+stopifnot(all.equal(jm, 140, tolerance = 0.05))
+ok("arrhenius")
+
+jt <- electron_transport_rate(500, 140)
+stopifnot(jt > 0, jt < 140)
+stopifnot(all.equal(psii_electron_flux(1000, phi2ll = 0.85), 850))
+ok("electron transport")
+
+fc3 <- farquhar_c3(vcmax = 80, j = 100, rd = 1, gamma_star = 42.75,
+                   kmc = 404.9, kmo = 278400, cc = 280, ci = 280, tu = 10)
+stopifnot(fc3$a > 0, fc3$ac > 0, fc3$aj > 0, fc3$ap > 0)
+stopifnot(fc3$limitation %in% c("rubisco", "electron", "tpu"))
+ok("farquhar_c3")
+
+lp <- leaf_photo_c3(ca = 420, ppfd = 1200, t_leaf = 25)
+stopifnot(lp$a > 0, lp$a < 40)
+lp_dim <- leaf_photo_c3(ca = 420, ppfd = 100, t_leaf = 25)
+stopifnot(lp_dim$a < lp$a, lp_dim$limitation == "electron")
+ok("leaf_photo_c3")
+
+c4 <- leaf_photo_c4(ci = 150, j2 = 120, vcmax = 60, jmax = 140, rd = 1,
+                    gamma_star = 42.75, kmc = 404.9, kmo = 278400)
+stopifnot(c4$a > 0, c4$a < 80)
+ok("leaf_photo_c4")
+
+pp <- ppfd_hourly(20, 32, 180)
+stopifnot(length(pp) == 24, sum(pp > 0) > 10, max(pp) < 2000)
+stopifnot(solar_sin_elev(32, 180, 12) > 0.9)
+ss <- sun_shade_lai(3, 0.5)
+stopifnot(abs(sum(ss) - 3) < 1e-9, ss["sun"] > 0, ss["shade"] > 0)
+cn <- canopy_photo_c3(lai = 3, sr_mj = 20, lat = 32, doy = 180, t_leaf = 25)
+stopifnot(cn$a_canopy > 0, cn$a_canopy < 2)
+ok("canopy photosynthesis")
+
+## --- v0.2.0: richards + heat -----------------------------------------------------
+p_vg <- list(retention = "vg", theta_r = 0.05, theta_s = 0.45,
+             alpha = 0.02, n = 1.5, k_sat = 0.5, k_min = 1e-6)
+th <- vg_retention(c(0, 100, 10000), 0.02, 1.5, 0.05, 0.45)
+stopifnot(all.equal(th[1], 0.45), th[2] < 0.45, th[3] > 0.05)
+th_bc <- bc_retention(c(10, 100), psia = 20, lambda = 0.4,
+                      theta_r = 0.05, theta_s = 0.45)
+stopifnot(all.equal(th_bc[1], 0.45), th_bc[2] < 0.45)
+stopifnot(moisture_capacity(100, p_vg) < 0)
+k1 <- unsat_conductivity(10, p_vg); k2 <- unsat_conductivity(1000, p_vg)
+stopifnot(k1 > k2, k1 <= 0.5)
+ok("retention & conductivity")
+
+ri <- richards_1d(psi_init = rep(200, 10), dz_m = 0.1, params = p_vg,
+                  dt_day = 1, top_flux = 0.02, bottom_bc = "free")
+stopifnot(all(ri$theta >= 0.05 & ri$theta <= 0.45))
+stopifnot(ri$psi[1] < 200)                            # rain wets surface
+th0 <- vg_retention(rep(200, 10), 0.02, 1.5, 0.05, 0.45)
+dS <- sum((ri$theta - th0) * 0.1)
+stopifnot(abs(dS - (0.02 - ri$drainage_m)) < 1e-6)     # mass balance closes
+ok("richards_1d rain + mass balance")
+
+ri_et <- richards_1d(psi_init = rep(100, 10), dz_m = 0.1, params = p_vg,
+                     dt_day = 2, top_flux = -0.003, bottom_bc = "free")
+stopifnot(ri_et$psi[1] > 100)                         # ET dries surface
+ok("richards_1d evaporation")
+
+ri_fx <- richards_1d(psi_init = rep(200, 10), dz_m = 0.1, params = p_vg,
+                     dt_day = 1, bottom_bc = "fixed", psi_bottom = 100)
+stopifnot(abs(ri_fx$psi[10] - 100) < 1e-6)
+ok("richards_1d fixed bottom")
+
+tc <- thermal_conductivity(0.3, "organic")
+stopifnot(all.equal(tc, 0.54 + 0.023 * 30))
+tb <- bottom_temp_wave(15, 10, 2, 180, 2)
+stopifnot(tb > 5, tb < 25)
+th2 <- heat_conduction_1d(t_init = rep(15, 10), dz_m = 0.1,
+                          theta = rep(0.3, 10), t_top = 25,
+                          bottom_bc = "fixed", t_bottom = 12)
+stopifnot(abs(th2[1] - 25) < 1e-6, abs(th2[10] - 12) < 1e-6)
+stopifnot(all(diff(th2) < 0))                          # monotonic gradient
+ok("heat conduction")
+
+cat("\nAll spacsysr v0.2.0 tests passed.\n")

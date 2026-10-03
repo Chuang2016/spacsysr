@@ -1,0 +1,24 @@
+Package: spacsysr
+Title: Core Biogeochemical Process Modules of the SPACSYS Model
+Version: 0.2.0
+Authors@R: person("qingfeng", role = c("aut", "cre"),
+             email = "qingfeng@example.com",
+             comment = "TODO: replace with your real email")
+Description: An R implementation of the core soil-plant biogeochemical process
+    modules described in the SPACSYS technical manual (Wu, 2022, ver. 6.00).
+    Provides response functions (temperature, moisture, pH), soil organic matter
+    decomposition, nitrification and denitrification (simplified and
+    microbiological process-based formulations), nitrogenous gas emissions
+    (N2O, NO), ammonia volatilisation, methane production and oxidation, plant
+    respiration, a tipping-bucket soil water balance, and a simplified daily
+    driver that couples the modules across soil layers. Pure base R, no
+    dependencies.
+License: GPL-3
+Encoding: UTF-8
+RoxygenNote: 7.3.2
+Suggests:
+    knitr,
+    rmarkdown
+VignetteBuilder: knitr
+URL: https://www.rothamsted.ac.uk/
+BugReports: https://github.com/qingfeng/spacsysr/issues
