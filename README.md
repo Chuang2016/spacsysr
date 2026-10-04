@@ -118,7 +118,7 @@ Worked case vignettes: `lite-wheat` (water × nitrogen),
 
 | Module | Key functions | Manual |
 |---|---|---|
-| Weather / PET | `weather_complete`, `pet_hargreaves`, `pet_priestley_taylor`, `thermal_time` | ch. 1 |
+| Weather / PET | `weather_complete` (measured rad > sunshine Angstrom-Prescott > Hargreaves), `pet_hargreaves`, `pet_priestley_taylor`, `thermal_time` | ch. 1 |
 | Soil water | `soil_water_step` (bucket), `soilwater_richards` (1-D Richards, VG/BC) | ch. 5 |
 | Soil heat | `soil_heat_step` | ch. 6 |
 | Soil C/N | `soilcn_lite_step`, `decompose_*`, `nitrif_*`, `denitrif_*` | ch. 4 |

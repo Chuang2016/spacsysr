@@ -380,3 +380,40 @@ fp <- ghg_footprint(out)
 stopifnot(abs(fp$share_co2 + fp$share_ch4 + fp$share_n2o - 1) < 1e-9,
           fp$ghg_co2eq_kg_ha > 0)
 ok("ghg_footprint")
+
+## --- weather: Angstrom-Prescott sunshine -> radiation -----------------------
+rs <- rad_angstrom_prescott(n_sun = 8, n_day = 14,
+                            ra = ra_extraterrestrial(35, 150))
+stopifnot(rs > 0, rs < ra_extraterrestrial(35, 150))
+rs0 <- rad_angstrom_prescott(n_sun = 0, n_day = 14,
+                             ra = ra_extraterrestrial(35, 150))
+rs1 <- rad_angstrom_prescott(n_sun = 14, n_day = 14,
+                             ra = ra_extraterrestrial(35, 150))
+stopifnot(rs0 < rs, rs < rs1)  # monotonic in sunshine
+rs_cap <- rad_angstrom_prescott(n_sun = 20, n_day = 14,
+                                ra = ra_extraterrestrial(35, 150))
+stopifnot(abs(rs_cap - rs1) < 1e-9)  # n/N capped at 1
+ok("rad_angstrom_prescott")
+
+## --- weather_complete: radiation priority ----------------------------------
+w0 <- data.frame(date = as.Date("2026-06-01") + 0:4,
+                 tmax = c(28, 29, 30, 27, 28),
+                 tmin = c(18, 19, 20, 18, 17),
+                 precip = c(0, 0, 5, 0, 0))
+w_base <- weather_complete(w0, 35)                       # Hargreaves only
+w_sun <- weather_complete(transform(w0, sunshine = c(10, 9, 2, 8, 11)), 35)
+stopifnot(!any(is.na(w_sun$rad)),
+          any(abs(w_sun$rad - w_base$rad) > 0.5))         # sunshine changes rad
+w_rad <- weather_complete(transform(w0, rad = 22), 35)   # measured wins
+stopifnot(all(w_rad$rad == 22))
+w_mix <- weather_complete(
+  transform(w0, sunshine = c(10, 9, 2, 8, 11), rad = c(22, NA, NA, NA, NA)),
+  35)
+stopifnot(w_mix$rad[1] == 22, !is.na(w_mix$rad[2]))       # measured kept
+## PET: auto prefers Priestley-Taylor when sunshine-derived rad exists
+w_pt <- weather_complete(transform(w0, sunshine = c(10, 9, 2, 8, 11)), 35,
+                         pet_method = "auto")
+w_hg <- weather_complete(transform(w0, sunshine = c(10, 9, 2, 8, 11)), 35,
+                         pet_method = "hargreaves")
+stopifnot(any(abs(w_pt$pet - w_hg$pet) > 1e-6))
+ok("weather_complete sunshine priority")

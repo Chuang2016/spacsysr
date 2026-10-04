@@ -1,6 +1,6 @@
 Package: spacsysr
 Title: Core Biogeochemical Process Modules of the SPACSYS Model
-Version: 0.4.0
+Version: 0.4.1
 Authors@R: person("qingfeng", role = c("aut", "cre"),
              email = "qingfeng@example.com",
              comment = "TODO: replace with your real email")

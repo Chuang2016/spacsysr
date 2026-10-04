@@ -61,8 +61,9 @@ out <- spacsys_lite_run(weather, soil,
 tail(out$w_grain, 1) / 100  # 籽粒产量，t/ha
 ```
 
-`weather_complete()` 会自动补全辐射（Hargreaves 温差法）和
-PET（Hargreaves 法）；`soil_init()` 用缺省的田间持水量/萎蔫点等
+`weather_complete()` 会自动补全辐射和 PET：有实测辐射直接用，
+有日照时数就用 Angstrom-Prescott 公式（FAO56）推算，
+都没有才回退到 Hargreaves 温差法；`soil_init()` 用缺省的田间持水量/萎蔫点等
 建好土层。输出 `out` 是日尺度数据框：物候 `dindex`、LAI、
 各器官生物量、胁迫因子 `f_t/f_w/f_n`、N2O/NO、CH4、CO2、
 淋溶、矿化……共 30 列。

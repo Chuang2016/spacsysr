@@ -1,3 +1,11 @@
+# spacsysr 0.4.1
+
+- Weather: new `rad_angstrom_prescott()` (FAO56 Angstrom-Prescott) --
+  `weather_complete()` now accepts an optional `sunshine` (h d-1) column.
+  Radiation priority: measured `rad` > sunshine-derived > Hargreaves
+  temperature-difference; PET `auto` uses Priestley-Taylor whenever
+  radiation is measured or sunshine-derived.
+
 # spacsysr 0.4.0
 
 - New: methane module per manual eq. 210-215 -- `ch4_plant_transport()`

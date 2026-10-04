@@ -97,6 +97,29 @@ rad_hargreaves <- function(tmax, tmin, lat_deg, doy, k_rs = 0.16) {
     ra_extraterrestrial(lat_deg, doy)
 }
 
+#' Solar radiation from sunshine duration (Angstrom-Prescott)
+#'
+#' \code{Rs = (a + b * n/N) * Ra} (FAO56): incoming solar radiation from
+#' the relative sunshine duration. More reliable than the
+#' temperature-difference estimate (\code{\link{rad_hargreaves}}) when
+#' sunshine hours are recorded -- the usual case at Chinese weather
+#' stations. Coefficients default to the FAO56 recommendations
+#' (a = 0.25, b = 0.50); calibrate locally when possible.
+#'
+#' @param n_sun measured bright sunshine duration (h d-1).
+#' @param n_day maximum possible daylight hours, e.g. from
+#'   \code{\link{daylength_hours}}.
+#' @param ra extraterrestrial radiation (MJ m-2 d-1), e.g. from
+#'   \code{\link{ra_extraterrestrial}}.
+#' @param a,b Angstrom-Prescott coefficients; defaults 0.25 / 0.50.
+#' @return Solar radiation (MJ m-2 d-1).
+#' @references Allen et al. (1998). FAO Irrigation and Drainage Paper 56.
+#' @export
+rad_angstrom_prescott <- function(n_sun, n_day, ra, a = 0.25, b = 0.50) {
+  rel <- pmin(pmax(n_sun / pmax(n_day, 0.1), 0), 1)
+  (a + b * rel) * ra
+}
+
 #' Daily thermal time
 #'
 #' Growing degree days with a base temperature and an upper cutoff:
@@ -113,31 +136,51 @@ thermal_time <- function(tavg, t_base, t_max = 35) {
 
 #' Complete a weather table with minimal inputs
 #'
-#' Fills in missing \code{rad} (via \code{\link{rad_hargreaves}}) and
-#' \code{pet} (via \code{\link{pet_hargreaves}} or
-#' \code{\link{pet_priestley_taylor}} when \code{rad} is present), plus
-#' \code{tavg}, \code{doy} and \code{gdd} columns. The input only needs
-#' \code{date}, \code{tmax}, \code{tmin} and \code{precip}.
+#' Fills in missing \code{rad} and \code{pet}, plus \code{tavg},
+#' \code{doy} and \code{gdd} columns. The input only needs \code{date},
+#' \code{tmax}, \code{tmin} and \code{precip}; optionally add
+#' \code{sunshine} (h d-1) and/or measured \code{rad} for better
+#' radiation estimates.
+#'
+#' Radiation priority: measured \code{rad} > Angstrom-Prescott from
+#' \code{sunshine} (\code{\link{rad_angstrom_prescott}}) >
+#' Hargreaves temperature-difference (\code{\link{rad_hargreaves}}).
+#' PET (\code{pet_method = "auto"}) uses Priestley-Taylor whenever
+#' radiation is measured or sunshine-derived, otherwise Hargreaves.
 #'
 #' @param weather data.frame with \code{date} (Date), \code{tmax},
 #'   \code{tmin} (deg C), \code{precip} (mm d-1); optional \code{rad}
-#'   (MJ m-2 d-1) and \code{pet} (mm d-1).
+#'   (MJ m-2 d-1), \code{sunshine} (h d-1) and \code{pet} (mm d-1).
 #' @param lat_deg latitude (decimal degrees, +N).
 #' @param t_base base temperature for thermal time (deg C).
 #' @param pet_method \code{"auto"} (default), \code{"hargreaves"} or
 #'   \code{"priestley_taylor"}.
+#' @param ap_a,ap_b Angstrom-Prescott coefficients (see
+#'   \code{\link{rad_angstrom_prescott}}).
 #' @return The completed weather data.frame.
 #' @export
 weather_complete <- function(weather, lat_deg, t_base = 8,
                              pet_method = c("auto", "hargreaves",
-                                            "priestley_taylor")) {
+                                            "priestley_taylor"),
+                             ap_a = 0.25, ap_b = 0.50) {
   pet_method <- match.arg(pet_method)
   weather$date <- as.Date(weather$date)
   weather$tavg <- (weather$tmax + weather$tmin) / 2
   weather$doy <- as.integer(format(weather$date, "%j"))
   rad_given <- "rad" %in% names(weather) && any(!is.na(weather$rad))
+  sun_given <- "sunshine" %in% names(weather) && any(!is.na(weather$sunshine))
   if (!"rad" %in% names(weather)) weather$rad <- NA_real_
   miss_rad <- is.na(weather$rad)
+  if (any(miss_rad) && sun_given) {
+    idx <- which(miss_rad & !is.na(weather$sunshine))
+    if (length(idx)) {
+      n_day <- daylength_hours(lat_deg, weather$doy[idx])
+      ra <- ra_extraterrestrial(lat_deg, weather$doy[idx])
+      weather$rad[idx] <- rad_angstrom_prescott(weather$sunshine[idx],
+                                                n_day, ra, ap_a, ap_b)
+    }
+    miss_rad <- is.na(weather$rad)
+  }
   if (any(miss_rad))
     weather$rad[miss_rad] <- rad_hargreaves(weather$tmax[miss_rad],
                                             weather$tmin[miss_rad],
@@ -145,8 +188,9 @@ weather_complete <- function(weather, lat_deg, t_base = 8,
   if (!"pet" %in% names(weather)) weather$pet <- NA_real_
   miss_pet <- is.na(weather$pet)
   if (any(miss_pet)) {
+    rad_good <- rad_given || sun_given
     use_pt <- (pet_method == "priestley_taylor") ||
-      (pet_method == "auto" && rad_given)
+      (pet_method == "auto" && rad_good)
     weather$pet[miss_pet] <- if (use_pt)
       pet_priestley_taylor(weather$rad[miss_pet], weather$tavg[miss_pet])
     else
