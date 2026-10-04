@@ -1,0 +1,96 @@
+---
+title: "Lite model: rice growth under flooded vs rainfed conditions"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Lite model: rice growth under flooded vs rainfed conditions}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.width = 7, fig.height = 4)
+library(spacsysr)
+```
+
+## Overview
+
+This vignette demonstrates the lite model on rice. Rice is grown here in a
+warm summer season with three scenarios: continuous flooding with fertiliser,
+rainfed (no irrigation) with fertiliser, and flooding without fertiliser.
+Flooding is represented by daily irrigation replacing evapotranspiration
+demand (`irrig` column); there is no standing-water layer and no CH4
+coupling in the lite model, so the focus is on water/N stress and the
+yield vs. N2O trade-off of flooded soils.
+
+## Minimal inputs
+
+```{r}
+set.seed(21)
+n <- 150
+weather <- data.frame(
+  date   = seq(as.Date("2026-06-01"), by = "day", length.out = n),
+  tmax   = 31 + 3 * sin(2 * pi * (1:n) / n) + rnorm(n, 0, 1.5),
+  tmin   = 23 + 2 * sin(2 * pi * (1:n) / n) + rnorm(n, 0, 1.2),
+  precip = pmax(0, rnorm(n, 2.5, 6))  # sub-humid: rainfed faces dry spells
+)
+w <- weather_complete(weather, lat_deg = 30, t_base = 8)
+
+# Flooded: irrigation replaces ET demand each day, keeping soil near FC
+w_flood <- w
+w_flood$irrig <- pmax(0, w_flood$pet - w_flood$precip)
+
+soil <- soil_init(depth_mm = c(200, 300, 500),
+                  soc = c(1000, 600, 300),   # modest fertility: no-N shows stress
+                  nh4_init = 0.3, no3_init = 0.5)
+crop <- crop_default_params("rice")
+```
+
+## Scenarios
+
+```{r}
+fert <- data.frame(date = as.Date(c("2026-06-08", "2026-07-10", "2026-08-15")),
+                   nh4_add = c(6, 4, 3), no3_add = c(0, 0, 0))
+
+run <- function(w_in, fert_in) {
+  spacsys_lite_run(w_in, soil, crop, n_inputs = fert_in, lat_deg = 30)
+}
+scenarios <- rbind(
+  cbind(run(w_flood, fert),   scenario = "flooded + N"),
+  cbind(run(w, fert),         scenario = "rainfed + N"),
+  cbind(run(w_flood, NULL),   scenario = "flooded, no N")
+)
+```
+
+## Canopy and yield
+
+```{r}
+cols <- c("steelblue", "firebrick", "darkgreen")
+matplot(scenarios$date[1:n],
+        sapply(split(scenarios$lai, scenarios$scenario), identity),
+        type = "l", lty = 1, col = cols, xlab = "Date", ylab = "LAI",
+        main = "Rice canopy development")
+legend("topleft", legend = levels(factor(scenarios$scenario)),
+       col = cols, lty = 1, bty = "n")
+
+tapply(scenarios$w_grain, scenarios$scenario,
+       function(x) round(tail(x, 1) / 100, 2))  # t/ha
+```
+
+## Stress, N uptake and N2O
+
+```{r}
+agg <- aggregate(cbind(f_w, f_n) ~ scenario, data = scenarios,
+                 FUN = function(x) round(sum(x < 0.9), 0))
+names(agg)[2:3] <- c("water_stress_days", "N_stress_days")
+agg
+
+tapply(scenarios$n_uptake, scenarios$scenario, sum)  # g N m-2, seasonal
+round(tapply(scenarios$n2o, scenarios$scenario, sum) * 1000, 1)  # mg N m-2
+```
+
+Flooding removes water stress and gives the highest yield, but the wet soil
+also drives more denitrification and hence higher N2O -- the classic
+paddy yield-vs-emissions trade-off. Without fertiliser, growth is N-limited
+despite ample water. Caveats: the lite model has no ponded-water layer, no
+methane module and no iron-plaque/redox chemistry; treat absolute N2O as
+illustrative.
