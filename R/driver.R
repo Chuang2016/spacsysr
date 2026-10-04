@@ -47,6 +47,10 @@ spacsys_default_params <- function() {
     ## lite crop N uptake (driver_lite)
     up_frac_max = 0.5,  # max fraction of root-zone mineral N taken up
                        # per day (uptake kinetics; lite model only)
+    ## lite methane substrate (driver_lite)
+    f_het_meth = 0.05,  # fraction of heterotrophic respiration feeding
+                       # methanogenic substrate (rest = non-methanogenic
+                       # anaerobic CO2); root respiration fully counts
     ## misc
     n2o_emit_frac = 0.9,   # daily fraction of N2O pool emitted
     wfps_crit = 0.9, wfps_range = 0.3

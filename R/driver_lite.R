@@ -94,6 +94,17 @@ root_weights <- function(zmid_mm, root_depth_mm) {
 #'   \code{nh4_add}, \code{no3_add} (g N m-2, applied to the top layer).
 #' @param lat_deg latitude (decimal degrees, +N), used for PET and
 #'   thermal time when weather is incomplete.
+#' @param ponding ponded-water module switch: \code{FALSE} (default,
+#'   upland behaviour) or \code{TRUE} / a named list of arguments to
+#'   \code{\link{pond_water_step}} and \code{\link{pond_gas_step}}
+#'   (\code{bund_mm}, \code{k_perc}, \code{k_evap}, \code{k_oxw},
+#'   \code{k_transfer}, plus \code{target_mm}: when set, auto-irrigate
+#'   each day to maintain that ponded depth, mimicking paddy water
+#'   management). When enabled, rainfall + irrigation pond on
+#'   the surface, infiltrate, evaporate and overflow the bund
+#'   (new output column \code{pond_mm}); diffusive soil CH4/N2O are
+#'   routed through the ponded water
+#'   (\code{\link{pond_gas_step}}) instead of directly to the air.
 #' @return A data.frame with one row per day: \code{date},
 #'   \code{dindex}, \code{lai}, \code{w_leaf}, \code{w_stem},
 #'   \code{w_root}, \code{w_grain} (g DM m-2), \code{growth} (g m-2 d-1),
@@ -104,18 +115,27 @@ root_weights <- function(zmid_mm, root_depth_mm) {
 #'   \code{n_leached}, \code{n_mineralised}, \code{n_nitrified},
 #'   \code{n_denitrified} (g N m-2 d-1), \code{co2_c} (g C m-2 d-1,
 #'   heterotrophic), \code{ch4} (g CH4 m-2 d-1), \code{co2_auto_c}
-#'   (autotrophic, g C m-2 d-1), \code{co2_total_c} (g C m-2 d-1).
+#'   (autotrophic, g C m-2 d-1), \code{co2_total_c} (g C m-2 d-1),
+#'   \code{pond_mm} (ponded water depth, mm; 0 unless \code{ponding}).
 #'   Soil CH4 follows manual eq. 210-215 via \code{\link{ch4_lite_step}};
 #'   autotrophic CO2 via \code{\link{co2_autotrophic}}.
 #' @export
 spacsys_lite_run <- function(weather, soil, crop = crop_default_params(),
                              params = spacsys_default_params(),
-                             n_inputs = NULL, lat_deg = 35) {
+                             n_inputs = NULL, lat_deg = 35,
+                             ponding = FALSE) {
   weather <- weather_complete(weather, lat_deg, t_base = crop$tbase)
-  if ("irrig" %in% names(weather))
-    weather$precip <- weather$precip + ifelse(is.na(weather$irrig), 0,
-                                              weather$irrig)
+  irrig <- if ("irrig" %in% names(weather))
+    ifelse(is.na(weather$irrig), 0, weather$irrig) else rep(0, nrow(weather))
   if (!is.null(n_inputs)) n_inputs$date <- as.Date(n_inputs$date)
+
+  ## ponding options
+  pond_on <- !isFALSE(ponding)
+  pond_opt <- list(bund_mm = 80, k_perc = 2, k_evap = 1.0,
+                   k_oxw = 0.5, k_transfer = 0.3, target_mm = NULL)
+  if (is.list(ponding))
+    pond_opt[names(ponding)] <- ponding
+  pond_mm <- 0; ch4_diss <- 0; n2o_diss <- 0
 
   n_layer <- nrow(soil)
   depth_m <- soil$depth_mm / 1000
@@ -135,7 +155,7 @@ spacsys_lite_run <- function(weather, soil, crop = crop_default_params(),
     pet = 0, aet = 0, swc_root = 0, drainage = 0, runoff = 0,
     n2o = 0, no = 0, n_leached = 0, n_mineralised = 0,
     n_nitrified = 0, n_denitrified = 0, co2_c = 0,
-    ch4 = 0, co2_auto_c = 0, co2_total_c = 0
+    ch4 = 0, co2_auto_c = 0, co2_total_c = 0, pond_mm = 0
   )
 
   for (d in seq_len(n_day)) {
@@ -150,13 +170,36 @@ spacsys_lite_run <- function(weather, soil, crop = crop_default_params(),
       }
     }
 
-    ## PET split into potential transpiration / soil evaporation
+    ## surface water: ponding module or direct infiltration
     pet <- weather$pet[d]
-    pt <- pet * (1 - exp(-crop$kext * pstate$lai))
-    w <- soil_water_step(theta, weather$precip[d], pet,
-                         soil$fc, soil$wp, soil$sat, soil$depth_mm)
+    overflow_mm <- 0
+    if (pond_on) {
+      pw <- pond_water_step(pond_mm, weather$precip[d], irrig[d], pet,
+                            theta[1], soil$sat[1], soil$depth_mm[1],
+                            bund_mm = pond_opt$bund_mm,
+                            k_perc = pond_opt$k_perc,
+                            k_evap = pond_opt$k_evap,
+                            target_mm = pond_opt$target_mm)
+      pond_mm <- pw$pond_mm
+      theta[1] <- pw$theta_top
+      overflow_mm <- pw$overflow_mm
+      pet_in <- max(0, pet - pw$evap_mm)
+      ## plow pan: saturated topsoil does not drain while ponded
+      fc_eff <- soil$fc
+      if (pond_mm > 1) fc_eff[1] <- soil$sat[1]
+      w <- soil_water_step(theta, 0, pet_in, fc_eff,
+                           soil$wp, soil$sat, soil$depth_mm)
+      w$drainage_mm <- w$drainage_mm + pw$perc_mm
+    } else {
+      precip_in <- weather$precip[d] + irrig[d]
+      pet_in <- pet
+      ## PET split into potential transpiration / soil evaporation
+      w <- soil_water_step(theta, precip_in, pet_in,
+                           soil$fc, soil$wp, soil$sat, soil$depth_mm)
+    }
+    pt <- pet_in * (1 - exp(-crop$kext * pstate$lai))
     theta <- w$theta
-    at <- if (pet > 0) w$aet_mm * pt / pet else 0
+    at <- if (pet_in > 0) w$aet_mm * pt / pet_in else 0
     f_w <- if (pt > 0.01) min(1, at / pt) else 1
 
     ## nitrate leaching with deep drainage (bottom layer)
@@ -194,6 +237,7 @@ spacsys_lite_run <- function(weather, soil, crop = crop_default_params(),
     ## soil C/N per layer
     theta_pct <- theta * 100
     co2_het <- numeric(n_layer)
+    n2o_soil <- 0
     for (i in seq_len(n_layer)) {
       s <- soilcn_lite_step(
         list(c_litter = c_litter[i], c_humus = c_humus[i],
@@ -203,7 +247,7 @@ spacsys_lite_run <- function(weather, soil, crop = crop_default_params(),
         depth_m = depth_m[i], params = params)
       c_litter[i] <- s$pools$c_litter; c_humus[i] <- s$pools$c_humus
       nh4[i] <- s$pools$nh4; no3[i] <- s$pools$no3
-      out$n2o[d] <- out$n2o[d] + s$n2o
+      n2o_soil <- n2o_soil + s$n2o
       out$no[d] <- out$no[d] + s$no
       out$n_mineralised[d] <- out$n_mineralised[d] + s$n_mineralised
       out$n_nitrified[d] <- out$n_nitrified[d] + s$n_nitrified
@@ -214,11 +258,14 @@ spacsys_lite_run <- function(weather, soil, crop = crop_default_params(),
 
     ## methane per layer (manual eq. 210-215, lite pool formulation).
     ## Substrate = anoxic (root + heterotrophic) respiration.
+    ## Plant-transported + ebullition CH4 bypass ponded water;
+    ## diffusive CH4 dissolves when ponded.
+    ch4_diff <- 0; ch4_bypass <- 0
     for (i in seq_len(n_layer)) {
       wfps_i <- min(1, theta[i] / soil$sat[i])
       anox_i <- f_water_denitrif(wfps_i * 100, 100, 60, 1)
       r_root_co2 <- 0.015 * (pstate$w_root * rw[i]) * 2^((tavg - 20) / 10)
-      r_sub <- (co2_het[i] * 44 / 12 + r_root_co2) * anox_i
+      r_sub <- (r_root_co2 + params$f_het_meth * co2_het[i] * 44 / 12) * anox_i
       m <- ch4_lite_step(ch4_con = ch4_con[i], t_soil = tavg,
                          wfps = wfps_i, theta = theta[i],
                          depth_m = depth_m[i], r_substrate = r_sub,
@@ -227,7 +274,24 @@ spacsys_lite_run <- function(weather, soil, crop = crop_default_params(),
                          z_mid = zmid[i] / 1000,
                          bulk_density = soil$bulk_density[i])
       ch4_con[i] <- m$ch4_con
-      out$ch4[d] <- out$ch4[d] + m$emission
+      ch4_diff <- ch4_diff + m$diffusion
+      ch4_bypass <- ch4_bypass + m$plant_transport + m$ebullition
+    }
+
+    ## dissolved-gas routing through ponded water (optional module)
+    if (pond_on) {
+      pg <- pond_gas_step(ch4_in = ch4_diff, n2o_in = n2o_soil,
+                          ebu_in = ch4_bypass,
+                          ch4_diss = ch4_diss, n2o_diss = n2o_diss,
+                          pond_m = pond_mm / 1000, t_water = tavg,
+                          k_oxw = pond_opt$k_oxw,
+                          k_transfer = pond_opt$k_transfer)
+      ch4_diss <- pg$ch4_diss; n2o_diss <- pg$n2o_diss
+      out$ch4[d] <- pg$ch4_flux
+      out$n2o[d] <- pg$n2o_flux
+    } else {
+      out$ch4[d] <- ch4_diff + ch4_bypass
+      out$n2o[d] <- n2o_soil
     }
 
     ## autotrophic CO2: root + shoot maintenance + growth respiration.
@@ -254,8 +318,10 @@ spacsys_lite_run <- function(weather, soil, crop = crop_default_params(),
     out$f_t[d] <- g$f_t; out$f_w[d] <- f_w; out$f_n[d] <- g$f_n
     out$pet[d] <- pet; out$aet[d] <- w$aet_mm
     out$swc_root[d] <- sum(theta * rw)
-    out$drainage[d] <- w$drainage_mm; out$runoff[d] <- w$runoff_mm
+    out$drainage[d] <- w$drainage_mm
+    out$runoff[d] <- w$runoff_mm + overflow_mm
     out$n_leached[d] <- leached
+    out$pond_mm[d] <- pond_mm
   }
   out
 }

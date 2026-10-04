@@ -417,3 +417,59 @@ w_hg <- weather_complete(transform(w0, sunshine = c(10, 9, 2, 8, 11)), 35,
                          pet_method = "hargreaves")
 stopifnot(any(abs(w_pt$pet - w_hg$pet) > 1e-6))
 ok("weather_complete sunshine priority")
+
+## --- ponding: water balance --------------------------------------------------
+pw <- pond_water_step(pond_mm = 0, precip = 40, irrig = 0, pet = 5,
+                      theta_top = 0.2, sat_top = 0.45, depth_top_mm = 200,
+                      target_mm = 30)
+stopifnot(pw$pond_mm >= 0, pw$theta_top <= 0.45 + 1e-9,
+          pw$irrig_auto_mm >= 0, pw$evap_mm >= 0)
+## mass balance: in = dpond + fill + perc + evap + overflow
+din <- 40 + pw$irrig_auto_mm
+dout <- pw$pond_mm - 0 + (pw$theta_top - 0.2) * 200 +
+  pw$perc_mm + pw$evap_mm + pw$overflow_mm
+stopifnot(abs(din - dout) < 1e-9)
+ok("pond_water_step mass balance")
+
+## --- ponding: dissolved gas, mass conservation -------------------------------
+pg <- pond_gas_step(ch4_in = 0.1, n2o_in = 0.05, ebu_in = 0.02,
+                    pond_m = 0.0005)  # < 1 mm: bypass
+stopifnot(abs(pg$ch4_flux - 0.12) < 1e-9, abs(pg$n2o_flux - 0.05) < 1e-9)
+set.seed(7)
+for (k in 1:20) {
+  pm <- runif(1, 0.002, 0.08)
+  pg <- pond_gas_step(ch4_in = runif(1, 0, 0.2), n2o_in = runif(1, 0, 0.1),
+                      ebu_in = runif(1, 0, 0.05),
+                      ch4_diss = runif(1, 0, 1), n2o_diss = runif(1, 0, 0.5),
+                      pond_m = pm)
+  stopifnot(pg$ch4_flux >= 0, pg$n2o_flux >= 0,
+            pg$ch4_diss >= 0, pg$n2o_diss >= 0)
+}
+## flux cannot exceed available mass: single-day closed check
+pg <- pond_gas_step(ch4_in = 0.1, n2o_in = 0.05, pond_m = 0.002)
+stopifnot(pg$ch4_flux <= 0.1 + 1e-9, pg$n2o_flux <= 0.05 + 1e-9)
+ok("pond_gas_step mass conservation")
+
+## --- driver: ponding maintains water level & plausible paddy CH4 -------------
+set.seed(11); n <- 60
+wt <- data.frame(date = seq(as.Date("2026-06-01"), by = "day", length.out = n),
+                 tmax = 31 + rnorm(n, 0, 1), tmin = 23 + rnorm(n, 0, 1),
+                 precip = pmax(0, rnorm(n, 2, 5)))
+wt <- weather_complete(wt, lat_deg = 30, t_base = 8)
+so <- soil_init(depth_mm = c(200, 300, 500), soc = c(1000, 600, 300))
+cr <- crop_default_params("rice")
+rp <- spacsys_lite_run(wt, so, cr, lat_deg = 30, ponding = list(target_mm = 30))
+stopifnot(mean(tail(rp$pond_mm, 30)) > 15, all(rp$pond_mm >= 0), !any(is.na(rp)))
+ch4_paddy <- sum(rp$ch4) * 10  # kg/ha
+stopifnot(ch4_paddy > 1, ch4_paddy < 150)  # plausible flooded-rice range
+ok("driver ponding")
+
+## --- run_scenarios: one-row-per-scenario table --------------------------------
+tab <- run_scenarios(wt, so, cr,
+  list("A" = list(ponding = list(target_mm = 30)),
+       "B" = list()),
+  lat_deg = 30)
+stopifnot(nrow(tab) == 2, all(c("yield_t_ha", "ghg_co2eq_kg_ha",
+  "intensity_kg_co2eq_per_t_grain") %in% names(tab)),
+  tab$ch4_kg_ha[1] > tab$ch4_kg_ha[2])  # ponded emits more CH4
+ok("run_scenarios")

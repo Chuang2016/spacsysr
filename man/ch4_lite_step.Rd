@@ -31,7 +31,8 @@ values -- calibrate to site before quantitative use.
 ch4_lite_step(ch4_con, t_soil, wfps, theta, depth_m, r_substrate,
               w_root, w_leaf, f_root, z_mid, bulk_density = 1.35,
               vr_max = 0.005, vs_max = 5e-6, kr_ch4 = 10, ks_ch4 = 10,
-              ko2 = 5, eta_inhib = 0.1, k_diff = 0.05, ...)
+              ko2 = 5, eta_inhib = 0.1, k_diff = 0.05,
+              o2_rol_rate = 0.3, ...)
 }
 \arguments{
   \item{ch4_con}{current layer CH4 concentration (g CH4 m-3 soil).}
@@ -48,7 +49,8 @@ ch4_lite_step(ch4_con, t_soil, wfps, theta, depth_m, r_substrate,
   \item{bulk_density}{soil bulk density (g cm-3).}
   \item{vr_max, vs_max, kr_ch4, ks_ch4, ko2, eta_inhib}{oxidation /
     production kinetic parameters (see details).}
-  \item{k_diff}{first-order soil-atmosphere CH4 exchange rate (d-1).}
+  \item{o2_rol_rate}{radial oxygen loss (g O2 m-3 per g root m-2); default 0.3.}
+\item{k_diff}{first-order soil-atmosphere CH4 exchange rate (d-1).}
   \item{...}{further arguments passed to
     \code{\link{ch4_plant_transport}} (e.g. \code{d_a}).}
 }

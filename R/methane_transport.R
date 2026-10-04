@@ -101,6 +101,9 @@ ch4_ebullition <- function(ch4_con, theta, ch4_sol = 22,
 #'   kinetic parameters (see details).
 #' @param k_diff first-order soil-atmosphere CH4 exchange rate (d-1);
 #'   default 0.05.
+#' @param o2_rol_rate radial oxygen loss rate: O2 released per unit
+#'   root biomass (g O2 m-3 per g root m-2), sustaining rhizospheric
+#'   methanotrophy in flooded soil; default 0.3.
 #' @param ... further arguments passed to \code{\link{ch4_plant_transport}}
 #'   (e.g. \code{d_a}, \code{a_m}, \code{tau}).
 #' @return A list with \code{ch4_con} (updated pool), \code{production},
@@ -114,9 +117,14 @@ ch4_lite_step <- function(ch4_con, t_soil, wfps, theta, depth_m,
                           bulk_density = 1.35,
                           vr_max = 0.005, vs_max = 5e-6,
                           kr_ch4 = 10, ks_ch4 = 10, ko2 = 5,
-                          eta_inhib = 0.1, k_diff = 0.05, ...) {
+                          eta_inhib = 0.1, k_diff = 0.05,
+                          o2_rol_rate = 0.3, ...) {
   ch4_air <- 1.4e-3
-  o2_con  <- 300 * pmax(0, 1 - wfps)
+  ## soil O2 from air-filled porosity + radial oxygen loss from roots
+  ## (aerenchyma); the latter keeps rhizospheric oxidation alive in
+  ## flooded soil (lite approximation)
+  o2_con <- 300 * pmax(0, 1 - wfps) +
+    min(30, o2_rol_rate * w_root)
 
   ## production from anoxic respiration (eq. 213)
   prod <- ch4_production(r_substrate, f_ch4_co2 = 0.3,

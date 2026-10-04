@@ -1,3 +1,20 @@
+# spacsysr 0.5.0
+
+- New optional ponding module (`R/ponding.R`): `pond_water_step()`
+  (ponded depth balance coupled to topsoil, plow-pan percolation,
+  auto-irrigation to `target_mm`) and `pond_gas_step()` (dissolved
+  CH4/N2O in floodwater: water-column CH4 oxidation + diffusive
+  water-air exchange; plant/ebullition CH4 bypasses). Enabled via
+  `ponding` in `spacsys_lite_run()` (new `pond_mm` output).
+- New `run_scenarios()`: batch-run management scenarios
+  (fertiliser x irrigation x ponding) into one carbon-footprint
+  comparison table.
+- Calibration fixes for flooded conditions: N2O fraction of
+  denitrification declines toward saturation (complete denitrification
+  to N2); new `f_het_meth` param scales methanogenic substrate;
+  rhizospheric O2 from radial oxygen loss (`o2_rol_rate`) keeps
+  methanotrophy alive in flooded soil.
+
 # spacsysr 0.4.1
 
 - Weather: new `rad_angstrom_prescott()` (FAO56 Angstrom-Prescott) --

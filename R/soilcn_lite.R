@@ -76,7 +76,11 @@ soilcn_lite_step <- function(pools, tsoil, theta_pct, sat_pct, ph,
                                f_t, fw_den, params$n_half)
   n_den <- min(n_den, no3)
   no3 <- no3 - n_den
-  n2o_den <- n_den * params$n2o_frac_denitrif
+  ## N2O fraction declines toward full saturation: prolonged anoxia
+  ## drives denitrification to completion (N2), so N2O peaks at
+  ## intermediate wetness (lite approximation)
+  n2o_frac_eff <- params$n2o_frac_denitrif * (1 - 0.8 * fw_den)
+  n2o_den <- n_den * n2o_frac_eff
 
   list(pools = list(c_litter = c_litter, c_humus = c_humus,
                     nh4 = nh4, no3 = no3),
