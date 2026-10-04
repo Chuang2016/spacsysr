@@ -10,7 +10,7 @@
 \item{n_inputs}{Optional data.frame with date and any of nh4_add, no3_add (g N m-2, applied to the top layer).}
 \item{lat_deg}{Latitude (decimal degrees, +N), used for PET and thermal time when weather is incomplete.}
 }
-\value{A data.frame with one row per day: date, dindex, lai, w_leaf, w_stem, w_root, w_grain (g DM m-2), growth (g m-2 d-1), n_uptake (g N m-2 d-1), stress factors f_t, f_w, f_n, pet, aet (mm d-1), swc_root (root-zone mean water fraction), drainage, runoff (mm d-1), n2o, no (g N m-2 d-1), n_leached, n_mineralised, n_nitrified, n_denitrified (g N m-2 d-1), co2_c (g C m-2 d-1).}
+\value{A data.frame with one row per day: date, dindex, lai, w_leaf, w_stem, w_root, w_grain (g DM m-2), growth (g m-2 d-1), n_uptake (g N m-2 d-1), stress factors f_t, f_w, f_n, pet, aet (mm d-1), swc_root (root-zone mean water fraction), drainage, runoff (mm d-1), n2o, no (g N m-2 d-1), n_leached, n_mineralised, n_nitrified, n_denitrified (g N m-2 d-1), co2_c (g C m-2 d-1, heterotrophic), ch4 (g CH4 m-2 d-1), co2_auto_c (autotrophic, g C m-2 d-1), co2_total_c (g C m-2 d-1). Soil CH4 follows manual eq. 210-215 via ch4_lite_step; autotrophic CO2 via co2_autotrophic.}
 \examples{
 w <- data.frame(date = as.Date("2026-05-01") + 0:59,
   tmax = 26 + rnorm(60), tmin = 15 + rnorm(60), precip = pmax(0, rnorm(60, 2, 4)))

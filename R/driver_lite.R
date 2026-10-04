@@ -23,12 +23,14 @@
 #' @param nh4_init,no3_init initial mineral N (g N m-2); scalar or per layer.
 #' @param theta_init initial water content (fraction); defaults to the
 #'   midpoint of wilting point and field capacity.
+#' @param ch4_init initial soil CH4 concentration (g CH4 m-3 soil);
+#'   default 0.
 #' @return A soil data.frame with one row per layer.
 #' @export
 soil_init <- function(depth_mm, fc = 0.30, wp = 0.12, sat = 0.45,
                      bulk_density = 1.35, ph = 6.5, soc = 3000,
                      litter_frac = 0.05, nh4_init = 1, no3_init = 3,
-                     theta_init = NULL) {
+                     theta_init = NULL, ch4_init = 0) {
   n <- length(depth_mm)
   rep_len <- function(x) rep_len_inner(x, n)
   rep_len_inner <- function(x, n) rep(x, length.out = n)
@@ -40,7 +42,8 @@ soil_init <- function(depth_mm, fc = 0.30, wp = 0.12, sat = 0.45,
     theta_init = rep_len(theta_init),
     c_litter = rep_len(soc) * litter_frac,
     c_humus = rep_len(soc) * (1 - litter_frac),
-    nh4 = rep_len(nh4_init), no3 = rep_len(no3_init)
+    nh4 = rep_len(nh4_init), no3 = rep_len(no3_init),
+    ch4_con = rep_len(ch4_init)
   )
 }
 
@@ -99,7 +102,11 @@ root_weights <- function(zmid_mm, root_depth_mm) {
 #'   \code{swc_root} (root-zone mean water fraction), \code{drainage},
 #'   \code{runoff} (mm d-1), \code{n2o}, \code{no} (g N m-2 d-1),
 #'   \code{n_leached}, \code{n_mineralised}, \code{n_nitrified},
-#'   \code{n_denitrified} (g N m-2 d-1), \code{co2_c} (g C m-2 d-1).
+#'   \code{n_denitrified} (g N m-2 d-1), \code{co2_c} (g C m-2 d-1,
+#'   heterotrophic), \code{ch4} (g CH4 m-2 d-1), \code{co2_auto_c}
+#'   (autotrophic, g C m-2 d-1), \code{co2_total_c} (g C m-2 d-1).
+#'   Soil CH4 follows manual eq. 210-215 via \code{\link{ch4_lite_step}};
+#'   autotrophic CO2 via \code{\link{co2_autotrophic}}.
 #' @export
 spacsys_lite_run <- function(weather, soil, crop = crop_default_params(),
                              params = spacsys_default_params(),
@@ -117,6 +124,7 @@ spacsys_lite_run <- function(weather, soil, crop = crop_default_params(),
   theta <- soil$theta_init
   c_litter <- soil$c_litter; c_humus <- soil$c_humus
   nh4 <- soil$nh4; no3 <- soil$no3
+  ch4_con <- if ("ch4_con" %in% names(soil)) soil$ch4_con else rep(0, n_layer)
 
   pstate <- plant_init(crop)
   n_day <- nrow(weather)
@@ -126,7 +134,8 @@ spacsys_lite_run <- function(weather, soil, crop = crop_default_params(),
     n_uptake = 0, f_t = 1, f_w = 1, f_n = 1,
     pet = 0, aet = 0, swc_root = 0, drainage = 0, runoff = 0,
     n2o = 0, no = 0, n_leached = 0, n_mineralised = 0,
-    n_nitrified = 0, n_denitrified = 0, co2_c = 0
+    n_nitrified = 0, n_denitrified = 0, co2_c = 0,
+    ch4 = 0, co2_auto_c = 0, co2_total_c = 0
   )
 
   for (d in seq_len(n_day)) {
@@ -184,6 +193,7 @@ spacsys_lite_run <- function(weather, soil, crop = crop_default_params(),
 
     ## soil C/N per layer
     theta_pct <- theta * 100
+    co2_het <- numeric(n_layer)
     for (i in seq_len(n_layer)) {
       s <- soilcn_lite_step(
         list(c_litter = c_litter[i], c_humus = c_humus[i],
@@ -199,7 +209,39 @@ spacsys_lite_run <- function(weather, soil, crop = crop_default_params(),
       out$n_nitrified[d] <- out$n_nitrified[d] + s$n_nitrified
       out$n_denitrified[d] <- out$n_denitrified[d] + s$n_denitrified
       out$co2_c[d] <- out$co2_c[d] + s$co2_c
+      co2_het[i] <- s$co2_c
     }
+
+    ## methane per layer (manual eq. 210-215, lite pool formulation).
+    ## Substrate = anoxic (root + heterotrophic) respiration.
+    for (i in seq_len(n_layer)) {
+      wfps_i <- min(1, theta[i] / soil$sat[i])
+      anox_i <- f_water_denitrif(wfps_i * 100, 100, 60, 1)
+      r_root_co2 <- 0.015 * (pstate$w_root * rw[i]) * 2^((tavg - 20) / 10)
+      r_sub <- (co2_het[i] * 44 / 12 + r_root_co2) * anox_i
+      m <- ch4_lite_step(ch4_con = ch4_con[i], t_soil = tavg,
+                         wfps = wfps_i, theta = theta[i],
+                         depth_m = depth_m[i], r_substrate = r_sub,
+                         w_root = pstate$w_root * rw[i],
+                         w_leaf = pstate$w_leaf, f_root = rw[i],
+                         z_mid = zmid[i] / 1000,
+                         bulk_density = soil$bulk_density[i])
+      ch4_con[i] <- m$ch4_con
+      out$ch4[d] <- out$ch4[d] + m$emission
+    }
+
+    ## autotrophic CO2: root + shoot maintenance + growth respiration.
+    ## The anoxic fraction of root respiration is diverted to CH4
+    ## (see ch4_lite_step) and excluded here.
+    wfps_root <- sum(pmin(1, theta / soil$sat) * rw)
+    anox <- f_water_denitrif(wfps_root * 100, 100, 60, 1)
+    ca <- co2_autotrophic(w_root = pstate$w_root,
+                          w_shoot = pstate$w_leaf + pstate$w_stem +
+                            pstate$w_grain,
+                          growth = g$growth, t_soil = tavg, t_air = tavg,
+                          anoxic_frac = anox)
+    out$co2_auto_c[d] <- ca$co2_auto
+    out$co2_total_c[d] <- out$co2_c[d] + ca$co2_auto
 
     ## litter return to top layer
     c_litter[1] <- c_litter[1] + g$litter_c

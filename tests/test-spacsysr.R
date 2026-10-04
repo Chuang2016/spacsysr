@@ -323,3 +323,60 @@ init_n <- sum(soil_init(c(200, 300, 500))$nh4 +
               soil_init(c(200, 300, 500))$no3)
 stopifnot(sum(out$n_uptake) <= init_n + sum(out$n_mineralised) + 1e-6)
 ok("spacsys_lite_run")
+
+## --- GHG: methane transport & ebullition ----------------------------------
+qt <- ch4_plant_transport(f_root = 0.5, w_leaf = 80, ch4_con = 5, z = 0.1)
+stopifnot(qt > 0)
+qt0 <- ch4_plant_transport(f_root = 0.5, w_leaf = 80, ch4_con = 1e-4, z = 0.1)
+stopifnot(qt0 == 0)  # below atmospheric: no outward transport
+ok("ch4_plant_transport")
+
+qe0 <- ch4_ebullition(ch4_con = 5, theta = 0.4)
+stopifnot(qe0 == 0)  # below solubility
+qe1 <- ch4_ebullition(ch4_con = 50, theta = 0.4)
+stopifnot(qe1 > qe0)
+ok("ch4_ebullition")
+
+## --- GHG: layer CH4 balance ----------------------------------------------
+m_wet <- ch4_lite_step(ch4_con = 1, t_soil = 27, wfps = 0.95, theta = 0.43,
+                       depth_m = 0.2, r_substrate = 2, w_root = 15,
+                       w_leaf = 78, f_root = 0.4, z_mid = 0.1)
+stopifnot(m_wet$emission > 0, m_wet$ch4_con >= 0,
+          m_wet$production > 0)
+m_dry <- ch4_lite_step(ch4_con = 0.5, t_soil = 20, wfps = 0.4, theta = 0.15,
+                       depth_m = 0.2, r_substrate = 0.01, w_root = 15,
+                       w_leaf = 78, f_root = 0.4, z_mid = 0.1)
+stopifnot(m_dry$emission < m_wet$emission, m_dry$ch4_con >= 0)
+ok("ch4_lite_step")
+
+## --- GHG: CO2 autotrophic ------------------------------------------------
+rr1 <- root_respiration(100, 20); rr2 <- root_respiration(100, 30)
+stopifnot(abs(rr2 / rr1 - 2) < 0.01)  # Q10 = 2
+ca <- co2_autotrophic(w_root = 50, w_shoot = 200, growth = 10,
+                      t_soil = 20, t_air = 20, anoxic_frac = 0)
+stopifnot(abs(ca$co2_auto - (ca$co2_root + ca$co2_shoot + ca$co2_growth)) < 1e-9,
+          ca$co2_auto > 0)
+ca_anox <- co2_autotrophic(w_root = 50, w_shoot = 200, growth = 10,
+                           t_soil = 20, t_air = 20, anoxic_frac = 1)
+stopifnot(ca_anox$co2_root == 0)  # fully anoxic: root C goes to CH4
+ok("co2_autotrophic")
+
+## --- GHG: aggregation ----------------------------------------------------
+stopifnot(abs(ghg_co2eq(1, 0, 0) - 27.9) < 1e-9,
+          abs(ghg_co2eq(0, 1, 0) - 273) < 1e-9,
+          abs(ghg_co2eq(0, 0, 10) - 10) < 1e-9)
+ok("ghg_co2eq")
+
+set.seed(1)
+n <- 30
+wt <- data.frame(date = as.Date("2026-06-01") + 0:(n - 1),
+                 tmax = 28 + rnorm(n, 0, 1.5), tmin = 20 + rnorm(n, 0, 1),
+                 precip = pmax(0, rnorm(n, 3, 4)))
+out <- spacsys_lite_run(wt, soil_init(c(200, 300, 500)), lat_deg = 35)
+stopifnot(all(c("ch4", "co2_auto_c", "co2_total_c") %in% names(out)),
+          !any(is.na(out$ch4)), !any(is.na(out$co2_total_c)),
+          all(out$co2_total_c >= out$co2_c - 1e-9))
+fp <- ghg_footprint(out)
+stopifnot(abs(fp$share_co2 + fp$share_ch4 + fp$share_n2o - 1) < 1e-9,
+          fp$ghg_co2eq_kg_ha > 0)
+ok("ghg_footprint")

@@ -1,3 +1,22 @@
+# spacsysr 0.4.0
+
+- New: methane module per manual eq. 210-215 -- `ch4_plant_transport()`
+  (aerenchyma transport, eq. 214), `ch4_ebullition()` (simplified eq. 215)
+  and `ch4_lite_step()` (daily layer CH4 balance: production from anoxic
+  respiration, rhizospheric + soil methanotrophic oxidation, plant
+  transport, ebullition, atmospheric diffusion). Kinetic parameters without
+  manual defaults are illustrative literature-typical values.
+- New: CO2 autotrophic respiration -- `root_respiration()`,
+  `shoot_respiration()`, `co2_autotrophic()` (maintenance + growth
+  respiration; anoxic fraction diverted to CH4).
+- New: GHG aggregation -- `ghg_co2eq()` (IPCC AR6 GWP100 defaults) and
+  `ghg_footprint()` (seasonal CO2/CH4/N2O budget + yield-scaled carbon
+  footprint intensity from a `spacsys_lite_run()` output).
+- `spacsys_lite_run()` now simulates soil CH4 and autotrophic CO2:
+  new output columns `ch4` (g CH4 m-2 d-1), `co2_auto_c`,
+  `co2_total_c` (g C m-2 d-1); `soil_init()` gains `ch4_init`.
+- New vignette `tutorial`: full package usage tutorial.
+
 # spacsysr 0.3.0
 
 - New: simplified ("lite") daily integrated model `spacsys_lite_run()`

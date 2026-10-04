@@ -43,38 +43,91 @@ manual page references are given in every help page):
 
 Pure base R. Zero dependencies. Installs anywhere.
 
-## Installation (on your Mac)
+## Installation
 
 ```r
-# from the local source tarball:
-install.packages("~/Downloads/spacsysr_0.1.0.tar.gz", repos = NULL, type = "source")
+# from the source tarball (pure base R, zero dependencies):
+install.packages("spacsysr_0.4.0.tar.gz", repos = NULL, type = "source")
+# or from GitHub (private repo, needs access):
+# remotes::install_github("Chuang2016/spacsysr")
 ```
 
 Requires R >= 4.0. No other packages needed.
 
-> ⚠️ 打包前请把 `DESCRIPTION` 中的 `email = "qingfeng@example.com"`
-> 换成你自己的邮箱（R 包构建要求维护者邮箱有效）。
+## Quick start — the lite integrated model
 
-## Quick start
+Minimal inputs: daily Tmax/Tmin/precipitation, layered soil properties,
+a crop type. Everything else (radiation, PET, thermal time) is estimated.
 
 ```r
 library(spacsysr)
 
-# N2O-relevant example: simplified denitrification rate
-denitrif_simplified(no3 = 8, kdeni = 0.5, f_temp = f_temp_q10(22),
-                    f_water = f_water_denitrif(theta = 38, theta_s = 45,
-                                               delta_theta = 10),
-                    n_half = 5)
+weather <- data.frame(
+  date   = seq(as.Date("2026-05-01"), by = "day", length.out = 120),
+  tmax   = rnorm(120, 26, 3), tmin = rnorm(120, 16, 2),
+  precip = pmax(0, rnorm(120, 3, 5))
+)
+soil <- soil_init(depth_mm = c(200, 300, 500),
+                  soc = c(2000, 1200, 600))
 
-# Run the coupled daily driver on the bundled paddy example
-weather <- load_example("paddy_weather")
-soil    <- load_example("paddy_soil")
-out <- spacsys_run(weather, soil, method = "simplified")
-head(out)
-plot(out$date, out$n2o, type = "l")
+out <- spacsys_lite_run(weather, soil,
+                        crop = crop_default_params("maize"),
+                        lat_deg = 38)
+tail(out$w_grain, 1) / 100   # grain yield, t/ha
+plot(out$date, out$lai, type = "l")  # canopy development
 ```
 
-See `vignettes/n2o-paddy.Rmd` for a full worked N2O example.
+Add fertiliser and get the GHG footprint in one line each:
+
+```r
+n_inputs <- data.frame(date = as.Date(c("2026-05-10", "2026-06-20")),
+                       nh4_add = c(7, 5), no3_add = c(0, 0))
+out <- spacsys_lite_run(weather, soil, crop_default_params("maize"),
+                        n_inputs = n_inputs, lat_deg = 38)
+ghg_footprint(out)   # seasonal CO2/CH4/N2O, CO2-eq, kg CO2-eq per t grain
+```
+
+## Tutorial
+
+A full step-by-step tutorial is in `vignettes/tutorial.Rmd`
+(and rendered with the package vignettes):
+
+1. **What this package is** — two ways to use it: standalone process
+   functions (77 total, each mapped to manual equation numbers) vs.
+   the coupled `spacsys_lite_run()` driver.
+2. **Inputs** — `weather_complete()` (Hargreaves PET/radiation from
+   Tmax/Tmin only), `soil_init()`, `crop_default_params()`
+   (wheat/rice/maize/generic).
+3. **Scenarios** — fertiliser schedules (`n_inputs`), irrigation
+   (`irrig` column), drought × nitrogen factorials.
+4. **Outputs** — 30 daily columns: phenology, LAI, biomass, stress
+   factors `f_t/f_w/f_n`, N2O/NO, CH4, CO2 (heterotrophic +
+   autotrophic), leaching, mineralisation...
+5. **GHG & carbon footprint** — `ghg_footprint()` sums the season into
+   kg/ha CO2-eq (IPCC AR6 GWP100) and yield-scaled intensity.
+6. **Build your own** — every process is a standalone function
+   (`soil_water_step()`, `soilcn_lite_step()`, `plant_growth_step()`,
+   `ch4_lite_step()`, ...); the lite driver is just one way to wire
+   them together.
+
+Worked case vignettes: `lite-wheat` (water × nitrogen),
+`lite-rice` (flooded vs rainfed, yield vs N2O trade-off),
+`lite-maize` (drought × nitrogen interaction), `n2o-paddy`.
+
+## Module map
+
+| Module | Key functions | Manual |
+|---|---|---|
+| Weather / PET | `weather_complete`, `pet_hargreaves`, `pet_priestley_taylor`, `thermal_time` | ch. 1 |
+| Soil water | `soil_water_step` (bucket), `soilwater_richards` (1-D Richards, VG/BC) | ch. 5 |
+| Soil heat | `soil_heat_step` | ch. 6 |
+| Soil C/N | `soilcn_lite_step`, `decompose_*`, `nitrif_*`, `denitrif_*` | ch. 4 |
+| Gaseous N | `gaseous_*`, `volatilization` (NH3) | ch. 4 |
+| Methane | `ch4_lite_step`, `ch4_plant_transport`, `ch4_ebullition`, `ch4_production`, `ch4_oxidation_*` | p. 65-67 |
+| CO2 / GHG | `co2_autotrophic`, `root_respiration`, `ghg_co2eq`, `ghg_footprint` | p. 26, 57 |
+| Plant growth (lite) | `plant_growth_step`, `phenology_step`, `crop_default_params` | ch. 2 |
+| Photosynthesis | `farquhar_c3`, `yin_struik_c4`, canopy sun/shade integration | ch. 2.2 |
+| Drivers | `spacsys_lite_run` (lite), `spacsys_run` (full biogeochemistry) | — |
 
 ## Citation / licence note
 
@@ -87,8 +140,6 @@ licensing with Rothamsted Research first.
 
 ## Roadmap
 
-- Richards-equation soil water & heat transport (manual ch. 5-6)
-- Farquhar C3/C4 photosynthesis and canopy integration (manual
-  ch. 2.2)
+- Parameter calibration helpers against field GHG chamber data
 - Full P cycling, 3-D roots, ruminant module
-- Parameter calibration helpers against field N2O chamber data
+- Ponded-water layer for paddy CH4
