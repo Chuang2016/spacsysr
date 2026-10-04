@@ -1,0 +1,71 @@
+flowchart LR
+    subgraph 输入层
+        W["weather.R\nPET/积温/昼长\nweather_complete"]
+        S["soil_init\n分层土壤构建"]
+        C["crop_default_params\n小麦/水稻/玉米"]
+    end
+
+    subgraph 日步长驱动
+        LITE["spacsys_lite_run\n简化集成模型\n水-碳氮-作物耦合"]
+        FULL["spacsys_run\n完整生物地球化学\n简化/微生物双路径"]
+    end
+
+    subgraph 过程模块
+        SW["soilwater.R\n蓄水桶水平衡"]
+        RICH["soilwater_richards.R\nRichards 溶质运移"]
+        HEAT["soilheat.R\n土壤热传导"]
+        DEC["decomposition.R\n有机质分解"]
+        NIT["nitrification.R\n硝化"]
+        DEN["denitrification.R\n反硝化"]
+        GAS["gaseous.R / volatilization.R\nN2O/NO/NH3"]
+        CH4["methane.R\nCH4 产生/氧化"]
+        PHO["photosynthesis.R\nFarquhar C3/C4 + 冠层"]
+        PLR["plant.R\n呼吸"]
+        PLL["plant_lite.R\nRUE 简化生长"]
+        RESP["response.R\n温度/水分/pH响应"]
+    end
+
+    subgraph 输出层
+        O1["产量 / LAI / 生物量"]
+        O2["N2O / NO / NH3 / CH4"]
+        O3["硝态氮淋溶"]
+        O4["土壤水热动态"]
+    end
+
+    W --> LITE
+    S --> LITE
+    C --> LITE
+    W --> FULL
+    S --> FULL
+
+    LITE --> SW
+    LITE --> DEC
+    LITE --> NIT
+    LITE --> DEN
+    LITE --> PLL
+    FULL --> SW
+    FULL --> DEC
+    FULL --> NIT
+    FULL --> DEN
+    FULL --> GAS
+    FULL --> CH4
+
+    SW --> O4
+    RICH --> O4
+    HEAT --> O4
+    DEC --> O2
+    NIT --> O2
+    DEN --> O2
+    GAS --> O2
+    CH4 --> O2
+    NIT --> O3
+    PHO --> O1
+    PLL --> O1
+    PLR --> O1
+    RESP --> SW
+    RESP --> DEC
+    RESP --> NIT
+    RESP --> DEN
+
+    style LITE fill:#fff3cd
+    style FULL fill:#e3f2fd

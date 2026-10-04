@@ -1,0 +1,93 @@
+---
+title: "Lite model: wheat growth under water x nitrogen stress"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Lite model: wheat growth under water x nitrogen stress}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", fig.width = 7, fig.height = 4)
+library(spacsysr)
+```
+
+## Overview
+
+This vignette demonstrates the simplified ("lite") integrated model
+`spacsys_lite_run()`: daily coupling of soil water, soil C/N cycling
+and RUE-based wheat growth, with growth co-limited by temperature,
+water (transpiration ratio) and nitrogen (supply/demand). Inputs are
+minimal -- daily Tmax/Tmin/precipitation, a few soil properties and
+initial pools.
+
+## Minimal inputs
+
+```{r}
+set.seed(7)
+n <- 180
+weather <- data.frame(
+  date   = seq(as.Date("2026-03-01"), by = "day", length.out = n),
+  tmax   = 20 + 7 * sin(2 * pi * (1:n) / n) + rnorm(n, 0, 2),
+  tmin   = 10 + 4 * sin(2 * pi * (1:n) / n) + rnorm(n, 0, 1.5),
+  precip = pmax(0, rnorm(n, 2, 5))
+)
+# Only Tmax/Tmin/precip are required: radiation and PET are estimated
+w <- weather_complete(weather, lat_deg = 35, t_base = 2)
+head(w[c("date", "tmax", "tmin", "precip", "rad", "pet")], 3)
+
+soil <- soil_init(depth_mm = c(200, 300, 500), soc = c(2500, 1500, 800))
+soil
+```
+
+## Water x nitrogen scenarios
+
+```{r}
+fert <- data.frame(date = as.Date(c("2026-04-10", "2026-05-20")),
+                   nh4_add = c(6, 4), no3_add = c(0, 0))
+run_scenario <- function(w, fert_in = NULL) {
+  out <- spacsys_lite_run(w, soil, crop_default_params("wheat"),
+                          n_inputs = fert_in, lat_deg = 35)
+  out$scenario <- deparse(substitute(w))
+  out
+}
+w_dry <- weather; w_dry$precip <- weather$precip * 0.25
+
+scenarios <- rbind(
+  run_scenario(weather),
+  run_scenario(weather, fert),
+  run_scenario(w_dry, fert)
+)
+scenarios$scenario <- rep(c("rainfed", "rainfed + 100 kg N/ha",
+                            "dry + 100 kg N/ha"), each = n)
+```
+
+## Growth and yield response
+
+```{r}
+cols <- c("darkgreen", "steelblue", "firebrick")
+matplot(scenarios$date[1:n],
+        sapply(split(scenarios$lai, scenarios$scenario), identity),
+        type = "l", lty = 1, col = cols, xlab = "Date", ylab = "LAI",
+        main = "Canopy development")
+legend("topleft", legend = levels(factor(scenarios$scenario)),
+       col = cols, lty = 1, bty = "n")
+
+tapply(scenarios$w_grain, scenarios$scenario,
+       function(x) round(tail(x, 1) / 100, 2))  # t/ha
+```
+
+## Stress diagnostics
+
+```{r}
+agg <- aggregate(cbind(f_w, f_n) ~ scenario, data = scenarios,
+                 FUN = function(x) round(sum(x < 0.9), 0))
+names(agg)[2:3] <- c("water_stress_days", "N_stress_days")
+agg
+tapply(scenarios$n_uptake, scenarios$scenario, sum)  # g N m-2, seasonal uptake
+```
+
+Water shortage cuts yield sharply through `f_w`; added fertiliser N is
+taken up (luxury uptake when soil N already suffices) and only raises
+yield once soil supply becomes limiting. All fluxes conserve mass --
+see `?spacsys_lite_run` for the simplifications adopted.

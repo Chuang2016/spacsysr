@@ -1,0 +1,18 @@
+flowchart TD
+    A["输入\n降水 precip / 灌溉 irrig\nPET, 各层 θ/fc/wp/sat"] --> B["表层加水\n表层 water += precip"]
+    B --> C{"逐层下渗级联\ni = 1..n"}
+    C -->|water大于fc| D["超量水下移\n下层 water += 超量\n最底层 → 深层排水"]
+    C -->|water不超过fc| E[" "]
+    D --> F{"表层饱和检查\n表层 water > sat?"}
+    E --> F
+    F -->|是| G["产流 runoff"]
+    F -->|否| H[" "]
+    G --> I{"自上而下实际ET\ni = 1..n"}
+    H --> I
+    I --> J["每层可利用水\n= water - wp\n取 min(可利用, 剩余PET)"]
+    J --> K["输出\nθ 各层 / drainage\nrunoff / aet_mm"]
+    K --> L["潜在蒸腾分配\nat = aet × pt/pet\n水分胁迫 f_w = at/pt"]
+
+    style A fill:#e3f2fd
+    style K fill:#e3f2fd
+    style L fill:#fff3cd

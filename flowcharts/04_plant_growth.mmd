@@ -1,0 +1,21 @@
+flowchart TD
+    A["输入\nDindex / 器官生物量\nLAI / 根深 / rad / Tavg\nf_w 水分胁迫 / n_avail 供氮"] --> B["物候推进\nDindex累积增加\n0播种-出苗 1-2营养 2-3生殖"]
+    B --> C{"Dindex ≥ 3?\n已成熟"}
+    C -->|是| D["生长 = 0\n仅维持"]
+    C -->|否| E["潜在生长\n= RUE × 截获PAR\nPAR截获=0.5·rad·(1-e^-kext·LAI)"]
+    E --> F["温度因子 f_t\nBeta 函数"]
+    F --> G["潜在氮需求\n= 潜在生长 × 器官N浓度"]
+    G --> H["氮胁迫 f_N\n= min(1, n_avail/需求)"]
+    H --> I["实际生长\n= 潜在 × min(f_t, f_w, f_N)"]
+    I --> J["按生育期分配\n叶/茎/根/粒"]
+    J --> K["更新\n叶→LAI\n根→根深"]
+    K --> L{"抽穗后?\nDindex ≥ 2"}
+    L -->|是| M["叶片衰老\n→ 凋落物 C/N\n归还表层土壤"]
+    L -->|否| N[" "]
+    D --> N
+    M --> N
+    N --> O["输出\n生长量/吸氮量\nf_t/f_w/f_N/Dindex\n凋落物归还量"]
+
+    style A fill:#e8f4e8
+    style O fill:#e8f4e8
+    style I fill:#fff3cd

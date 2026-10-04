@@ -1,0 +1,18 @@
+flowchart TD
+    A["输入 / 层状态\nC_litter / C_humus\nNH4 / NO3\nθ, Tsoil, pH"] --> B["响应因子\nf_temp Q10 × f_water\n分解水分响应"]
+    B --> C["一级分解\n凋落物 → CO2 + 腐殖化\n腐殖质 → CO2"]
+    C --> D{"C:N 化学计量\n矿化 / 固持"}
+    D -->|释放N > 腐殖化需N| E["净矿化\nNH4 增加"]
+    D -->|释放N < 微生物需N| F["净固持\nNH4 减少"]
+    E --> G["植物吸收扣减\n按根分布, NH4优先"]
+    F --> G
+    G --> H{"简化硝化\n仅当 NH4 > NO3\n手册 eq.182-183"}
+    H --> I["NH4 → NO3\n+ NO / N2O 少量"]
+    I --> J{"简化反硝化\n水分响应 f_water_denitrif"}
+    J --> K["NO3 → N2O + N2\nN2O 比例 n2o_frac"]
+    K --> L["输出更新后各库\n+ 通量: CO2-C\n矿化/硝化/反硝化/N2O/NO"]
+
+    style A fill:#f0e6f6
+    style L fill:#f0e6f6
+    style H fill:#fff3cd
+    style J fill:#fff3cd

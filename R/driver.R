@@ -44,6 +44,9 @@ spacsys_default_params <- function() {
     ch4_on = FALSE,
     vr_max = 0.01, vs_max = 1e-4, kr_ch4 = 1, ks_ch4 = 1, ko2 = 1,
     anoxic_resp = 0.5, f_ch4_co2 = 0.3, eta_inhib = 0.01,
+    ## lite crop N uptake (driver_lite)
+    up_frac_max = 0.5,  # max fraction of root-zone mineral N taken up
+                       # per day (uptake kinetics; lite model only)
     ## misc
     n2o_emit_frac = 0.9,   # daily fraction of N2O pool emitted
     wfps_crit = 0.9, wfps_range = 0.3

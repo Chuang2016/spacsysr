@@ -240,3 +240,86 @@ stopifnot(all(diff(th2) < 0))                          # monotonic gradient
 ok("heat conduction")
 
 cat("\nAll spacsysr v0.2.0 tests passed.\n")
+
+## --- lite model: weather -------------------------------------------------
+pet <- pet_hargreaves(28, 16, 35, 180)
+stopifnot(pet > 2, pet < 10)
+ok("pet_hargreaves")
+
+stopifnot(pet_priestley_taylor(20, 25) > 2,
+          pet_priestley_taylor(20, 25) < 8)
+ok("pet_priestley_taylor")
+
+dl <- daylength_hours(0, 80)
+stopifnot(abs(dl - 12) < 0.5)
+ok("daylength_hours")
+
+stopifnot(all.equal(thermal_time(22, 8), 14))
+stopifnot(thermal_time(5, 8) == 0, thermal_time(40, 8) == 27)
+ok("thermal_time")
+
+w0 <- data.frame(date = as.Date("2026-05-01") + 0:2, tmax = c(26, 27, 28),
+                 tmin = c(15, 16, 17), precip = c(0, 5, 0))
+w0c <- weather_complete(w0, 35)
+stopifnot(all(c("rad", "pet", "tavg", "doy", "gdd") %in% names(w0c)),
+          all(w0c$pet > 0), all(w0c$rad > 0), !any(is.na(w0c)))
+ok("weather_complete")
+
+## --- lite model: crop ----------------------------------------------------
+cp <- crop_default_params("wheat")
+stopifnot(cp$rue == 2.8, nrow(cp$part) == 3, ncol(cp$part) == 4,
+          all(abs(rowSums(cp$part) - 1) < 1e-9))
+ok("crop_default_params")
+
+stopifnot(phenology_step(0, 60, c(120, 1000, 800)) == 0.5)
+stopifnot(phenology_step(2.99, 100, c(120, 1000, 800)) == 3)
+ok("phenology_step")
+
+stopifnot(f_temp_growth(22, 0, 22, 35) == 1)
+stopifnot(f_temp_growth(-5, 0, 22, 35) == 0, f_temp_growth(40, 0, 22, 35) == 0)
+ok("f_temp_growth")
+
+s0 <- plant_init()
+g1 <- plant_growth_step(s0, 20, 22, 14, f_w = 1, n_avail = 5)
+stopifnot(g1$growth > 0, g1$f_n == 1, g1$dindex > 0,
+          g1$state$lai > s0$lai)
+g2 <- plant_growth_step(s0, 20, 22, 14, f_w = 1, n_avail = 0)
+stopifnot(g2$growth == 0, g2$f_n == 0)   # N stress stops growth
+s3 <- s0; s3$dindex <- 3
+g3 <- plant_growth_step(s3, 20, 22, 14, f_w = 1, n_avail = 5)
+stopifnot(g3$growth == 0)                # no growth after maturity
+ok("plant_growth_step")
+
+## --- lite model: soil C/N ------------------------------------------------
+sc <- soilcn_lite_step(list(c_litter = 100, c_humus = 2000, nh4 = 1, no3 = 3),
+                       tsoil = 20, theta_pct = 25, sat_pct = 45,
+                       ph = 6.5, depth_m = 0.2)
+stopifnot(sc$pools$c_litter < 100, sc$co2_c > 0,
+          all(c("n_mineralised", "n_nitrified", "n_denitrified",
+                "n2o", "no") %in% names(sc)))
+ok("soilcn_lite_step")
+
+## --- lite model: driver --------------------------------------------------
+so <- soil_init(c(200, 300, 500))
+stopifnot(nrow(so) == 3, all(c("c_litter", "c_humus", "nh4", "no3") %in% names(so)))
+ok("soil_init")
+
+rw <- root_weights(c(100, 350, 750), 500)
+stopifnot(abs(sum(rw) - 1) < 1e-9, rw[3] == 0, rw[1] > rw[2])
+ok("root_weights")
+
+set.seed(42)
+n <- 60
+wt <- data.frame(date = as.Date("2026-05-01") + 0:(n - 1),
+                 tmax = 26 + rnorm(n, 0, 2), tmin = 16 + rnorm(n, 0, 1.5),
+                 precip = pmax(0, rnorm(n, 3, 5)))
+out <- spacsys_lite_run(wt, soil_init(c(200, 300, 500)), lat_deg = 35)
+stopifnot(nrow(out) == n, !any(is.na(out)),
+          all(out$lai >= 0), all(out$f_w >= 0 & out$f_w <= 1),
+          all(out$f_n >= 0 & out$f_n <= 1),
+          tail(out$w_grain, 1) >= 0)
+## mineral-N mass balance regression test (uptake reporting bug, v0.3.0)
+init_n <- sum(soil_init(c(200, 300, 500))$nh4 +
+              soil_init(c(200, 300, 500))$no3)
+stopifnot(sum(out$n_uptake) <= init_n + sum(out$n_mineralised) + 1e-6)
+ok("spacsys_lite_run")

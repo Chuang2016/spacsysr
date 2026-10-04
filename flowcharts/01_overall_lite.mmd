@@ -1,0 +1,23 @@
+flowchart TD
+    A["输入\n气象 date/tmax/tmin/precip\n土壤分层理化性质 + 初始C/N库\n作物参数 crop_default_params"] --> B["weather_complete\n补全 rad/PET/积温\nHargreaves 或 Priestley-Taylor"]
+    B --> C{"逐日循环\nd = 1..n"}
+    C --> D["施肥事件\nn_inputs → 表层 NH4/NO3"]
+    D --> E["PET 按 LAI 分配\n潜在蒸腾 pt / 土壤蒸发 pe\nBeer 定律"]
+    E --> F["soil_water_step\n降水入渗 → 排水级联\n→ 径流 → 实际ET"]
+    F --> G["深层排水淋溶\n底层 NO3 按排水比例流失"]
+    G --> H["根区矿质氮可利用量\nn_avail = up_frac × Σ(NH4+NO3)"]
+    H --> I["plant_growth_step\n物候推进 Dindex 0→3\nRUE × 截获PAR = 潜在生长"]
+    I --> J{"胁迫三因子\nf_t 温度 × f_w 水分\n× f_N 氮素 → 实际生长"}
+    J --> K["器官分配\n叶/茎/根/粒\n叶→LAI, 根→根深"]
+    K --> L["氮需求 vs 供应\n实际吸收 → 按根分布\n扣减各层 NH4/NO3"]
+    L --> M["soilcn_lite_step × 土层\n凋落物/腐殖质分解\nC:N 化学计量矿化/固持\n简化硝化/反硝化"]
+    M --> N["气体损失\nN2O / NO\n+ CO2 呼吸"]
+    N --> O["衰老叶片 → 表层凋落物库"]
+    O --> P["记录日输出\nLAI/生物量/产量/胁迫因子\nN2O/淋溶/矿化..."]
+    P --> C
+    P --> Q["结束: 日尺度结果表\n产量 = w_grain"]
+
+    style A fill:#e8f4e8
+    style Q fill:#e8f4e8
+    style J fill:#fff3cd
+    style M fill:#f0e6f6

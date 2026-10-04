@@ -1,3 +1,23 @@
+# spacsysr 0.3.0
+
+- New: simplified ("lite") daily integrated model `spacsys_lite_run()`
+  coupling soil water, C/N cycling and crop growth with water/nitrogen
+  stress responses -- few parameters, minimal inputs.
+- New `R/weather.R`: Hargreaves / Priestley-Taylor PET, solar radiation
+  estimation, thermal time, daylength, `weather_complete()`.
+- New `R/plant_lite.R`: thermal-time phenology (Dindex 0-3), RUE-based
+  growth co-limited by temperature/water/nitrogen, stage-dependent
+  partitioning, senescence litter return, root elongation
+  (wheat/rice/maize/generic parameter sets).
+- New `R/soilcn_lite.R`: two-pool (litter+humus) decomposition with C:N
+  stoichiometric mineralisation/immobilisation + simplified
+  nitrification/denitrification.
+- New `R/driver_lite.R`: `soil_init()` minimal-input soil builder,
+  `root_weights()`, integrated daily driver.
+- New parameter `up_frac_max` in `spacsys_default_params()` (max daily
+  fraction of root-zone mineral N available for uptake).
+- New vignette `lite-wheat` demonstrating water x nitrogen response.
+
 # spacsysr 0.2.0
 
 - New: Farquhar C3 / Yin & Struik C4 leaf photosynthesis + canopy
