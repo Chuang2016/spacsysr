@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>科学施肥推荐</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+         background: #f2f5f0; color: #222; font-size: 16px; }
+  header { background: #2e7d32; color: #fff; padding: 14px 16px; font-size: 19px; font-weight: 700;
+           position: sticky; top: 0; z-index: 10; }
+  header small { display: block; font-size: 12px; font-weight: 400; opacity: .85; margin-top: 2px; }
+  main { padding: 12px 12px 40px; max-width: 640px; margin: 0 auto; }
+  .card { background: #fff; border-radius: 12px; padding: 14px; margin-bottom: 12px;
+          box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+  .card h3 { margin: 0 0 10px; font-size: 16px; color: #2e7d32; }
+  label { display: block; margin: 10px 0 4px; font-size: 14px; color: #555; }
+  input, select { width: 100%; padding: 12px; font-size: 16px; border: 1px solid #cfd8cc;
+                  border-radius: 8px; background: #fbfdfb; }
+  .row3 { display: flex; gap: 8px; }
+  .row3 > div { flex: 1; }
+  .row3 input { padding: 10px 6px; text-align: center; }
+  details { margin-top: 12px; border: 1px dashed #cfd8cc; border-radius: 8px; padding: 8px 10px; }
+  summary { font-size: 14px; color: #2e7d32; font-weight: 600; cursor: pointer; }
+  button#go { width: 100%; margin-top: 14px; padding: 14px; font-size: 17px; font-weight: 700;
+              color: #fff; background: #2e7d32; border: none; border-radius: 10px; }
+  button#go:active { background: #1b5e20; }
+  .nut { display: flex; gap: 8px; margin: 8px 0; }
+  .nut > div { flex: 1; background: #eef6ee; border-radius: 8px; padding: 10px 4px; text-align: center; }
+  .nut .v { font-size: 20px; font-weight: 700; color: #1b5e20; }
+  .nut .k { font-size: 12px; color: #666; margin-top: 2px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; margin: 6px 0; }
+  th, td { border: 1px solid #e0e0e0; padding: 8px 6px; text-align: center; }
+  th { background: #f1f8f1; color: #2e7d32; }
+  .note { font-size: 13px; color: #666; margin: 6px 0; }
+  .advice li { font-size: 14px; margin-bottom: 6px; line-height: 1.5; }
+  .steps { font-size: 13px; color: #444; background: #fafafa; border-radius: 8px;
+           padding: 10px; white-space: pre-wrap; line-height: 1.6; }
+  .diff-up { color: #c62828; } .diff-dn { color: #2e7d32; }
+</style>
+</head>
+<body>
+<header>🌾 科学施肥推荐<small>目标产量法 · 手机版（iOS / 安卓 / 微信通用）</small></header>
+<main>
+  <div class="card">
+    <h3>地块与目标</h3>
+    <label>作物</label>
+    <select id="crop"><option value="水稻">水稻</option><option value="小麦">小麦</option></select>
+    <label>地块面积（亩）</label><input id="area" type="number" value="10" min="0.1" step="0.1">
+    <label>目标产量（kg/亩）</label><input id="target" type="number" value="600" min="1">
+    <label>去年产量（kg/亩）</label><input id="lastY" type="number" value="550" min="1">
+    <label>去年施肥量（纯养分，kg/亩）</label>
+    <div class="row3">
+      <div><input id="lastN" type="number" value="12" min="0" placeholder="氮 N"></div>
+      <div><input id="lastP" type="number" value="5" min="0" placeholder="磷 P2O5"></div>
+      <div><input id="lastK" type="number" value="6" min="0" placeholder="钾 K2O"></div>
+    </div>
+    <details>
+      <summary>土壤化验指标（选填，有则更准）</summary>
+      <label>有机质（g/kg）</label><input id="som" type="number" step="0.1" placeholder="如 18.5">
+      <label>pH</label><input id="ph" type="number" step="0.1" placeholder="如 6.2">
+      <label>碱解氮（mg/kg）</label><input id="soilN" type="number" step="1" placeholder="如 110">
+      <label>有效磷（mg/kg）</label><input id="soilP" type="number" step="1" placeholder="如 18">
+      <label>速效钾（mg/kg）</label><input id="soilK" type="number" step="1" placeholder="如 120">
+    </details>
+    <button id="go">计算推荐施肥量</button>
+  </div>
+
+  <div class="card" id="result" hidden>
+    <h3>推荐结果</h3>
+    <div class="nut">
+      <div><div class="v" id="rN">–</div><div class="k">氮 N<br>kg/亩</div></div>
+      <div><div class="v" id="rP">–</div><div class="k">磷 P2O5<br>kg/亩</div></div>
+      <div><div class="v" id="rK">–</div><div class="k">钾 K2O<br>kg/亩</div></div>
+    </div>
+    <p class="note" id="rTotal"></p>
+    <p class="note" id="rDiff"></p>
+
+    <h3>肥料折算</h3>
+    <p class="note">方案A：单质肥料</p>
+    <table id="tA"></table>
+    <p class="note">方案B：磷酸二铵 + 尿素 + 氯化钾</p>
+    <table id="tB"></table>
+
+    <h3>基肥 / 追肥（kg/亩，纯养分）</h3>
+    <table id="tSplit"></table>
+    <p class="note" id="splitNote"></p>
+
+    <h3>农艺建议</h3>
+    <ul class="advice" id="advice"></ul>
+
+    <details>
+      <summary>计算过程明细（点击展开）</summary>
+      <div class="steps" id="steps"></div>
+    </details>
+  </div>
+
+  <p class="note" style="text-align:center">算法：推荐施肥量 ＝（目标产量需肥量 − 土壤供肥量）/ 肥料利用率<br>
+  供田间决策参考；利用率与校正系数为经验默认值，建议用当地试验校准。</p>
+</main>
+
+<script>
+"use strict";
+/* =====================================================================
+ * 核心算法（与 R 版 fert-app/R/fert_core.R 同公式，纯计算、无 DOM 依赖）
+ * ===================================================================== */
+var CROP_DB = {
+  "水稻": { up: [2.2, 1.0, 2.7], eff: [0.35, 0.20, 0.50], corr: [0.6, 0.6, 0.6] },
+  "小麦": { up: [3.0, 1.2, 3.0], eff: [0.35, 0.20, 0.50], corr: [0.6, 0.6, 0.6] }
+};
+var NM = ["N", "P2O5", "K2O"];
+
+function recommend(o) {
+  var db = CROP_DB[o.crop], up = db.up, ef = db.eff, co = db.corr;
+  var need = [], lastNeed = [], i;
+  for (i = 0; i < 3; i++) {
+    need.push(o.target / 100 * up[i]);
+    lastNeed.push(o.lastY / 100 * up[i]);
+  }
+  var lasts = [o.lastN, o.lastP, o.lastK];
+  var soils = [o.soilN, o.soilP, o.soilK];
+  var supply = [], from = [];
+  for (i = 0; i < 3; i++) {
+    if (soils[i] != null && !isNaN(soils[i])) {
+      supply.push(soils[i] * 0.15 * co[i]); from.push("土壤化验值");
+    } else {
+      supply.push(Math.max(0, lastNeed[i] - lasts[i] * ef[i])); from.push("去年数据反推");
+    }
+  }
+  var fert = [];
+  for (i = 0; i < 3; i++) fert.push(Math.max(0, (need[i] - supply[i]) / ef[i]));
+  // 肥料折算
+  var dap = fert[1] / 0.46;
+  var ureaB = Math.max(0, fert[0] - dap * 0.18) / 0.46;
+  var kclB = fert[2] / 0.60;
+  // 基追肥
+  var split, splitNote;
+  if (o.crop === "水稻") {
+    split = [
+      ["氮 N", fert[0]*0.5, fert[0]*0.3, fert[0]*0.2],
+      ["磷 P2O5", fert[1], 0, 0],
+      ["钾 K2O", fert[2]*0.6, 0, fert[2]*0.4]
+    ];
+    splitNote = "水稻：氮肥按 基肥:分蘖肥:穗肥 = 5:3:2；磷肥全部基施；钾肥 60% 基施、40% 穗期施。";
+  } else {
+    split = [
+      ["氮 N", fert[0]*0.6, fert[0]*0.4],
+      ["磷 P2O5", fert[1], 0],
+      ["钾 K2O", fert[2], 0]
+    ];
+    splitNote = "小麦：氮肥 60% 基施、40% 返青–拔节期追施；磷、钾肥全部基施。";
+  }
+  // 建议
+  var advice = [];
+  var nLim = (o.crop === "水稻") ? 18 : 20;
+  if (fert[0] > nLim) advice.push("推荐施氮量（" + fert[0].toFixed(1) + " kg/亩）偏高，请核对目标产量与参数，或分 3–4 次施用。");
+  if (o.ph != null && !isNaN(o.ph) && o.ph < 5.5) advice.push("土壤 pH < 5.5 偏酸，建议配合施用石灰或钙镁磷肥调酸，磷肥宜集中条施。");
+  if (o.ph != null && !isNaN(o.ph) && o.ph > 8.0) advice.push("土壤 pH > 8.0 偏碱，磷易被固定，建议磷肥集中施用、适当增加用量。");
+  if (o.som != null && !isNaN(o.som) && o.som < 10) advice.push("土壤有机质 < 10 g/kg 偏低，建议增施有机肥 1000–1500 kg/亩培肥地力。");
+  if (o.target > o.lastY * 1.3) advice.push("目标产量较去年增幅超过 30%，养分需求按线性外推，不确定性增大，建议保守取用。");
+  if (from.indexOf("去年数据反推") >= 0) advice.push("部分养分土壤供应量由去年数据反推；如有土壤化验值，填入后推荐更准。");
+  advice.push("氮肥分次深施、避免大水漫灌，可在保产的同时减少 N2O 排放。");
+  return { need: need, supply: supply, from: from, fert: fert,
+           dap: dap, ureaB: ureaB, kclB: kclB,
+           split: split, splitNote: splitNote, advice: advice, up: up, ef: ef };
+}
+
+/* =====================================================================
+ * 界面逻辑（仅浏览器环境执行）
+ * ===================================================================== */
+if (typeof document !== "undefined") {
+  function num(id) {
+    var v = parseFloat(document.getElementById(id).value);
+    return isNaN(v) ? NaN : v;
+  }
+  function optNum(id) {
+    var el = document.getElementById(id);
+    if (!el.value || el.value.trim() === "") return NaN;
+    return parseFloat(el.value);
+  }
+  document.getElementById("go").addEventListener("click", function () {
+    var r = recommend({
+      crop: document.getElementById("crop").value,
+      area: num("area"), target: num("target"), lastY: num("lastY"),
+      lastN: num("lastN") || 0, lastP: num("lastP") || 0, lastK: num("lastK") || 0,
+      som: optNum("som"), ph: optNum("ph"),
+      soilN: optNum("soilN"), soilP: optNum("soilP"), soilK: optNum("soilK")
+    });
+    var area = num("area");
+    document.getElementById("rN").textContent = r.fert[0].toFixed(1);
+    document.getElementById("rP").textContent = r.fert[1].toFixed(1);
+    document.getElementById("rK").textContent = r.fert[2].toFixed(1);
+    document.getElementById("rTotal").textContent =
+      "全田总计（" + area + " 亩）：N " + (r.fert[0]*area).toFixed(1) +
+      " kg，P2O5 " + (r.fert[1]*area).toFixed(1) + " kg，K2O " + (r.fert[2]*area).toFixed(1) + " kg";
+    var lasts = [num("lastN")||0, num("lastP")||0, num("lastK")||0];
+    document.getElementById("rDiff").textContent = "与去年相比：N " +
+      signed(r.fert[0]-lasts[0]) + "，P2O5 " + signed(r.fert[1]-lasts[1]) +
+      "，K2O " + signed(r.fert[2]-lasts[2]) + " kg/亩";
+    document.getElementById("tA").innerHTML = prodTable([
+      ["尿素 (46%N)", r.fert[0]/0.46], ["过磷酸钙 (12%P2O5)", r.fert[1]/0.12], ["氯化钾 (60%K2O)", r.fert[2]/0.60]
+    ], area);
+    document.getElementById("tB").innerHTML = prodTable([
+      ["磷酸二铵 (18-46-0)", r.dap], ["尿素 (46%N)", r.ureaB], ["氯化钾 (60%K2O)", r.kclB]
+    ], area);
+    document.getElementById("tSplit").innerHTML = splitTable(r);
+    document.getElementById("splitNote").textContent = r.splitNote;
+    document.getElementById("advice").innerHTML =
+      r.advice.map(function (a) { return "<li>" + esc(a) + "</li>"; }).join("");
+    var steps = [];
+    steps.push("目标需肥 = 目标产量/100 × 每100kg籽粒吸收量（" +
+      r.up.map(function(x){return x.toFixed(1);}).join(" / ") + "）");
+    for (var i = 0; i < 3; i++) {
+      steps.push("【" + NM[i] + "】需肥 " + r.need[i].toFixed(2) + "；土壤供应 " +
+        r.supply[i].toFixed(2) + "（" + r.from[i] + "）；推荐 " + r.fert[i].toFixed(2) +
+        " ＝ (" + r.need[i].toFixed(2) + " − " + r.supply[i].toFixed(2) + ") / " + r.ef[i].toFixed(2));
+    }
+    document.getElementById("steps").textContent = steps.join("\n");
+    document.getElementById("result").hidden = false;
+    document.getElementById("result").scrollIntoView({ behavior: "smooth" });
+  });
+  function signed(x) { return (x >= 0 ? "+" : "") + x.toFixed(1); }
+  function esc(s) { return s.replace(/&/g,"&amp;").replace(/</g,"&lt;"); }
+  function prodTable(rows, area) {
+    var h = "<tr><th>肥料</th><th>每亩(kg)</th><th>全田(kg)</th></tr>";
+    rows.forEach(function (r) {
+      h += "<tr><td>" + r[0] + "</td><td>" + r[1].toFixed(1) + "</td><td>" + (r[1]*area).toFixed(1) + "</td></tr>";
+    });
+    return h;
+  }
+  function splitTable(r) {
+    var heads = r.split[0].length === 4 ? ["养分","基肥","分蘖肥","穗肥"] : ["养分","基肥","追肥"];
+    var h = "<tr>" + heads.map(function(x){return "<th>"+x+"</th>";}).join("") + "</tr>";
+    r.split.forEach(function (row) {
+      h += "<tr><td>" + row[0] + "</td>" +
+        row.slice(1).map(function (x) { return "<td>" + x.toFixed(1) + "</td>"; }).join("") + "</tr>";
+    });
+    return h;
+  }
+}
+</script>
+</body>
+</html>
