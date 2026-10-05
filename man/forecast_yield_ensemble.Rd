@@ -8,7 +8,7 @@ forecast_yield_ensemble(obs, nwp, tails, soil, crop = crop_default_params(),
   ponding = FALSE)
 }
 \arguments{
-\item{obs, nwp, tails}{As in \code{\link{stitch_weather}} / \code{\link{tail_scenarios}} (\code{tails} is a list).}
+\item{obs, nwp, tails}{As in \code{\link{stitch_weather}} / \code{\link{tail_scenarios}} (\code{tails} is a list). \code{nwp} may also be a list of per-member NWP segments (e.g. from \code{\link{openmeteo_ensemble}}), one per tail; a single data.frame is recycled to all members.}
 \item{soil, crop, params, n_inputs, lat_deg, ponding}{As in \code{\link{spacsys_lite_run}}.}
 }
 \value{A list with \code{runs} (one lite-model output per member), \code{agb} (data.frame: \code{date}, \code{p10}, \code{p50}, \code{p90}, \code{mean}, \code{sd} of above-ground biomass, g DM m-2), \code{yield} (list with \code{values}, \code{mean}, \code{sd}, \code{p10}, \code{p50}, \code{p90} in g m-2 and \code{mean_t_ha}), \code{n_ens} and \code{issue_date}.}

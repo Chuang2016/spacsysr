@@ -237,6 +237,9 @@ tail_scenarios <- function(hist, pyear, start_md, end_md, tail_start,
 #'
 #' @param obs,nwp,tails as in \code{\link{stitch_weather}} /
 #'   \code{\link{tail_scenarios}} (\code{tails} is a list).
+#'   \code{nwp} may also be a list of per-member NWP segments (e.g.
+#'   from \code{\link{openmeteo_ensemble}}), one per tail; a single
+#'   data.frame is recycled to all members.
 #' @param soil,crop,params,n_inputs,lat_deg,ponding as in
 #'   \code{\link{spacsys_lite_run}}.
 #' @return A list with \code{runs} (one lite-model output per member),
@@ -251,8 +254,18 @@ forecast_yield_ensemble <- function(obs, nwp, tails, soil,
                                     params = spacsys_default_params(),
                                     n_inputs = NULL, lat_deg = 35,
                                     ponding = FALSE) {
-  runs <- lapply(tails, function(tl) {
-    w <- stitch_weather(obs, nwp, tl)
+  if (is.data.frame(nwp)) {
+    nwp_list <- rep(list(nwp), length(tails))
+  } else if (is.list(nwp)) {
+    if (length(nwp) != length(tails))
+      stop("forecast_yield_ensemble: 'nwp' list must match 'tails' ",
+           "in length (or be a single data.frame)")
+    nwp_list <- nwp
+  } else {
+    stop("forecast_yield_ensemble: 'nwp' must be a data.frame or a list")
+  }
+  runs <- lapply(seq_along(tails), function(i) {
+    w <- stitch_weather(obs, nwp_list[[i]], tails[[i]])
     spacsys_lite_run(w, soil, crop = crop, params = params,
                      n_inputs = n_inputs, lat_deg = lat_deg,
                      ponding = ponding)

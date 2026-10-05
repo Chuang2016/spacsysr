@@ -1,3 +1,13 @@
+# spacsysr 0.6.1
+
+- Real NWP forecasts, no API key: new `openmeteo_forecast()` (deterministic
+  10-16 d forecast, drop-in replacement for `synthetic_nwp()` output) and
+  `openmeteo_ensemble()` (one model's ensemble, e.g. ICON seamless EPS
+  40 members) in `R/openmeteo.R` -- pure base R, hand-parsed JSON so the
+  package keeps zero dependencies. `forecast_yield_ensemble()` now also
+  accepts a per-member `nwp` list (one NWP segment per tail) for fully
+  NWP-driven ensembles.
+
 # spacsysr 0.6.0
 
 - New forecast-chain module (`R/forecast.R`): rolling ensemble yield
