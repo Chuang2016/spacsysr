@@ -71,12 +71,12 @@ gen_hist_weather <- function(start = "2015-01-01", end = "2026-12-31",
   ar[is.na(ar)] <- 0
   tavg <- tcyc + ar
   seas <- cos(2 * pi * (doy - 200) / 365)                 # 夏季为正
-  p01 <- 0.14 + 0.14 * seas                              # 干->湿
-  p11 <- 0.45 + 0.25 * seas                              # 湿->湿
+  p01 <- 0.30 + 0.06 * seas                              # 干->湿（冬季 ~0.24）
+  p11 <- 0.58 + 0.14 * seas                              # 湿->湿（冬季 ~0.44）
   wet <- logical(n); wet[1] <- runif(1) < 0.3
   u <- runif(n)
   for (i in 2:n) wet[i] <- u[i] < ifelse(wet[i - 1], p11[i], p01[i])
-  amt_mean <- 5 + 6 * seas
+  amt_mean <- pmax(5.5 + 4.0 * seas, 3.5)                # 湿日平均降水：冬季 ~3.5 mm，夏季 ~9.5 mm
   precip <- ifelse(wet, rgamma(n, shape = 0.9, scale = amt_mean / 0.9), 0)
   tmax <- tavg + 4.2 + rnorm(n, 0, 0.6)
   tmin <- tavg - 3.8 + rnorm(n, 0, 0.6)
@@ -168,7 +168,7 @@ wheat <- crop_default_params("wheat")
 fert_wheat <- function(py) data.frame(
   date    = as.Date(c(paste0(py, "-", "10-25"),
                       paste0(py + 1, "-", "03-15"))),
-  nh4_add = c(5, 4), no3_add = c(0, 0, 0))
+  nh4_add = c(5, 4), no3_add = c(0, 0))
 pyw <- 2023
 sw <- season_slice(hist, pyw, "10-15", "06-15")   # 跨年季节
 issuew <- as.Date("2024-03-20")
@@ -201,7 +201,9 @@ hind <- hindcast_experiment(hist8, "06-10", "10-20",
   n_inputs = fert_rice, lat_deg = 32,
   ponding = list(target_mm = 40), seed = 100)
 sk <- hindcast_skill(hind)
-print(round(sk, 3))
+num <- sapply(sk, is.numeric)
+sk[num] <- round(sk[num], 3)
+print(sk)
 ```
 
 收敛曲线（RMSE 相对气候态基准的技巧评分一并给出）：
