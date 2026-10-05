@@ -1,3 +1,27 @@
+# spacsysr 0.6.0
+
+- New forecast-chain module (`R/forecast.R`): rolling ensemble yield
+  forecasting that couples the lite crop model with short-term weather
+  forecasts. Three-segment weather chain -- observed weather up to the
+  issue date | NWP forecast (7-10 d) | analogue-year scenario ensemble
+  for the rest of the season -- via `stitch_weather()` /
+  `tail_scenarios()`; `forecast_yield_ensemble()` runs the lite model
+  per member and returns above-ground biomass P10/P50/P90 bands plus
+  the final grain-yield distribution. `synthetic_nwp()` degrades true
+  future weather with lead-time-dependent error (AR(1) temperature
+  error, wet/dry flips + log-normal amount noise for precipitation)
+  as a hindcast-lab stand-in for real NWP products (CMA / ECMWF /
+  Open-Meteo); swap its output for the real forecast in operations.
+- New `hindcast_experiment()` + `hindcast_skill()`: leave-one-year-out
+  rolling hindcast protocol answering "does the final-yield forecast
+  get more accurate through the season?" -- perfect-model setup
+  (validates the forecast-chain design, not the crop model itself),
+  with RMSE/bias/MAE/spread and a climatology skill score per issue
+  date. New vignette `forecast-yield` works a full example
+  (rice + wheat) on synthetic Hefei-like weather.
+- New season helpers `season_slice()` / `available_pyears()`
+  (cross-year seasons such as winter wheat supported).
+
 # spacsysr 0.5.0
 
 - New optional ponding module (`R/ponding.R`): `pond_water_step()`
