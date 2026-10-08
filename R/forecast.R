@@ -273,14 +273,14 @@ forecast_yield_ensemble <- function(obs, nwp, tails, soil,
   dates <- runs[[1]]$date
   agb_mat <- sapply(runs, function(r)
     r$w_leaf + r$w_stem + r$w_grain)
-  qs <- t(apply(agb_mat, 1, quantile, probs = c(0.1, 0.5, 0.9)))
+  qs <- t(apply(agb_mat, 1, stats::quantile, probs = c(0.1, 0.5, 0.9)))
   agb <- data.frame(date = dates, p10 = qs[, 1], p50 = qs[, 2],
                      p90 = qs[, 3], mean = rowMeans(agb_mat),
                      sd = apply(agb_mat, 1, sd))
-  yv <- sapply(runs, function(r) tail(r$w_grain, 1))
-  yq <- quantile(yv, probs = c(0.1, 0.5, 0.9))
+  yv <- sapply(runs, function(r) utils::tail(r$w_grain, 1))
+  yq <- stats::quantile(yv, probs = c(0.1, 0.5, 0.9))
   list(runs = runs, agb = agb,
-       yield = list(values = yv, mean = mean(yv), sd = sd(yv),
+       yield = list(values = yv, mean = mean(yv), sd = stats::sd(yv),
                     p10 = yq[1], p50 = yq[2], p90 = yq[3],
                     mean_t_ha = mean(yv) / 100),
        n_ens = length(runs), issue_date = max(obs$date))
@@ -344,7 +344,7 @@ hindcast_experiment <- function(hist, start_md, end_md, issue_mds,
     r <- spacsys_lite_run(s, soil, crop = crop, params = params,
                           n_inputs = get_nin(py), lat_deg = lat_deg,
                           ponding = ponding)
-    tail(r$w_grain, 1)
+    utils::tail(r$w_grain, 1)
   }, numeric(1))
 
   rows <- list()
