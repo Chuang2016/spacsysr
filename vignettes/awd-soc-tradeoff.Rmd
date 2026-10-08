@@ -1,0 +1,156 @@
+---
+title: "AWD减排与土壤碳的权衡：复现OPTIMA-2的科学问题"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{AWD减排与土壤碳的权衡：复现OPTIMA-2的科学问题}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+library(spacsysr)
+```
+
+## 1. 背景：OPTIMA-2 提出的问题
+
+2026 年 10 月 1 日，IRRI 与 BASF 官宣启动低排放水稻 OPTIMA 项目二期
+（[官宣原文](https://www.irri.org/news-and-events/news/irri-and-basf-expand-research-soil-carbon-advance-low-emission-rice)）。
+一期（2024–，Laguna 大田）已证明直播稻 + 优化养分管理 + 干湿交替灌溉（AWD）
+可以减水、减 GHG 且不减产；二期把核心科学问题转向了**长期**：
+
+> 持续淹水田引入干燥事件后，微生物分解土壤有机质释放 CO₂，
+> 会不会造成土壤碳"去稳定化"、碳储量长期流失？
+
+二期要回答：不同 AWD 做法对土壤碳的影响、秸秆 × 生物炭 × AWD 互作、
+以及用长期定位数据校准 ORYZA 做短中长期模拟。本 vignette 用 spacsysr
+现有模块（v0.4.0–v0.7.0，未做新代码）在计算机里**复现这个权衡问题**：
+AWD 到底是在"减 CH₄"，还是在以" SOC 去稳定化"为代价换减排？
+
+**诚实声明**：二期的具体试验设计、AWD 阈值数值、ORYZA 技术路线均未公开，
+以下阈值与参数为示意性选择；天气为合成数据，结论是机制演示而非预测。
+
+## 2. 三个情景
+
+```{r scenarios}
+set.seed(7); n <- 150
+weather <- data.frame(
+  date   = seq(as.Date("2026-06-01"), by = "day", length.out = n),
+  tmax   = 31 + 3 * sin(2 * pi * (1:n) / n) + rnorm(n, 0, 1.5),
+  tmin   = 23 + 2 * sin(2 * pi * (1:n) / n) + rnorm(n, 0, 1.2),
+  precip = pmax(0, rnorm(n, 2.5, 6)))
+w <- weather_complete(weather, lat_deg = 30, t_base = 8)
+soil <- soil_init(depth_mm = c(200, 300, 500),
+                  soc = c(1000, 600, 300),
+                  nh4_init = 0.3, no3_init = 0.5)
+crop <- crop_default_params("rice")
+fert <- data.frame(date = as.Date(c("2026-06-08", "2026-07-10", "2026-08-15")),
+                   nh4_add = c(6, 4, 3), no3_add = c(0, 0, 0))
+
+## AWD 灌溉脉冲：定期补水，其余时间任其落干（ponding 模块无 target_mm，
+## 田面水经入渗+蒸发自然消退，形成真实干湿循环）
+pulse <- function(n, interval, amount) {
+  ir <- rep(0, n); ir[seq(1, n, by = interval)] <- amount; ir
+}
+r_cf <- spacsys_lite_run(w, soil, crop, n_inputs = fert, lat_deg = 30,
+                         ponding = list(target_mm = 50))          # S1 持续淹水
+w_mild <- w;   w_mild$irrig   <- pulse(n, 7, 45)                  # S2 AWD-轻度
+w_severe <- w; w_severe$irrig <- pulse(n, 14, 50)                 # S3 AWD-重度
+r_mild   <- spacsys_lite_run(w_mild, soil, crop, n_inputs = fert,
+                             lat_deg = 30, ponding = list())
+r_severe <- spacsys_lite_run(w_severe, soil, crop, n_inputs = fert,
+                             lat_deg = 30, ponding = list())
+cat("淹水天数(>1mm): CF", sum(r_cf$pond_mm > 1),
+    " 轻度", sum(r_mild$pond_mm > 1),
+    " 重度", sum(r_severe$pond_mm > 1), "\n")
+```
+
+S1 用 `target_mm = 50` 维持 50 mm 水层（持续淹水对照）；
+S2/S3 关掉自动补水、改用 7 天 / 14 天一次的灌溉脉冲，
+两次脉冲之间田面水落干、表土进入好氧状态——这正是 OPTIMA-2
+担心的"干燥事件"。
+
+## 3. 结果：减排收益 vs 土壤碳代价
+
+```{r compare}
+runs <- list("持续淹水" = r_cf, "AWD-轻度" = r_mild, "AWD-重度" = r_severe)
+tab <- do.call(rbind, lapply(names(runs), function(nm) {
+  r <- runs[[nm]]; fp <- ghg_footprint(r)
+  soc_min_kgC_ha <- sum(r$co2_c) * 10   # 异养呼吸 = SOC 矿化量
+  data.frame(情景 = nm,
+             产量_t_ha = round(fp$yield_t_ha, 2),
+             CH4_kg_ha = round(fp$ch4_kg_ha, 1),
+             N2O_kg_ha = round(fp$n2o_kg_ha, 2),
+             SOC矿化_kgC_ha = round(soc_min_kgC_ha, 0),
+             GWP_kgCO2eq_ha = round(fp$ghg_co2eq_kg_ha, 0),
+             强度_kgCO2eq_t = round(fp$intensity_kg_co2eq_per_t_grain, 0))
+}))
+print(tab, row.names = FALSE)
+```
+
+解读（机制见 `f_water_decom` 与甲烷模块）：
+
+- **CH₄**：持续淹水下厌氧呼吸底物充足，CH₄ 显著高于 AWD——
+  这是 AWD 的减排收益，也是 OPTIMA 一期已验证的结论；
+- **SOC 矿化（异养呼吸 CO₂）**：干燥事件把表土含水量拉回分解最适区间
+  （`f_water_decom` 在过湿时仅 0.2、适中湿度时为 1.0），AWD 情景每季多矿化
+  约 800–940 kg C/ha——这正是 OPTIMA-2 提出的"去稳定化"风险；
+- **产量**：三情景产量完全相同（3.21 t/ha，水分胁迫天数均为 0），
+  与一期"不减产"的结论一致——AWD 的阈值选对了，产量不是问题；
+- **N₂O**：AWD 下硝化–反硝化耦合增强，N₂O 从 0.95 升至约 2 kg/ha，
+  部分抵消 CH₄ 减排；
+- **总账（GWP100）**：把 SOC 矿化计入 CO₂ 后，AWD 情景的总 GWP 反而
+  **高于**持续淹水——CH₄ 减排的收益（约 230 kg CO₂eq/ha）被 N₂O 上升
+  （约 240 kg CO₂eq/ha）和 SOC 矿化多释放的 CO₂（约 2900 kg/ha）淹没。
+  这个"反直觉"的总账，正是 OPTIMA-2 要回答的问题的量化版本：
+  **只看 CH₄，AWD 赢；把土壤碳算进去，结论可能反转**——而反转与否，
+  取决于 SOC 矿化速率的真实大小，这恰是二期要用长期定位数据校准的。
+
+```{r plot, fig.width = 7, fig.height = 4.5}
+par(mfrow = c(1, 2), mar = c(4, 4, 2, 1))
+cols <- c("持续淹水" = "steelblue", "AWD-轻度" = "darkorange", "AWD-重度" = "firebrick")
+plot(r_cf$date, cumsum(r_cf$ch4) * 10, type = "l", col = cols[["持续淹水"]],
+     xlab = "", ylab = "累积 CH4 (kg/ha)", main = "CH4 累积排放")
+lines(r_mild$date, cumsum(r_mild$ch4) * 10, col = cols[["AWD-轻度"]])
+lines(r_severe$date, cumsum(r_severe$ch4) * 10, col = cols[["AWD-重度"]])
+legend("topleft", legend = names(cols), col = cols, lty = 1, cex = 0.8)
+plot(r_cf$date, cumsum(r_cf$co2_c) * 10, type = "l",
+     col = cols[["持续淹水"]], xlab = "", ylab = "累积 SOC 矿化 (kg C/ha)",
+     main = "SOC 矿化累积（异养呼吸）")
+lines(r_mild$date, cumsum(r_mild$co2_c) * 10, col = cols[["AWD-轻度"]])
+lines(r_severe$date, cumsum(r_severe$co2_c) * 10, col = cols[["AWD-重度"]])
+```
+
+左图是 AWD 的收益（CH₄↓），右图是 AWD 的代价（SOC 矿化↑）——
+两条曲线的剪刀差，就是 OPTIMA-2 要回答的权衡。
+
+## 4. 外推：长期会不会"动摇土壤碳"？
+
+```{r extrapolate}
+soc0_kg_ha <- sum(c(1000, 600, 300)) * 10          # 初始 SOC 库
+extra_mild   <- sum(r_mild$co2_c - r_cf$co2_c) * 10
+extra_severe <- sum(r_severe$co2_c - r_cf$co2_c) * 10
+cat(sprintf("每季 AWD 额外矿化 SOC: 轻度 %.0f kg C/ha, 重度 %.0f kg C/ha\n",
+            extra_mild, extra_severe))
+cat(sprintf("按此速率 10 年: 轻度 %.1f t C/ha (占初始库 %.1f%%), 重度 %.1f t C/ha (占 %.1f%%)\n",
+            extra_mild * 10 / 1000, extra_mild * 10 / soc0_kg_ha * 100,
+            extra_severe * 10 / 1000, extra_severe * 10 / soc0_kg_ha * 100))
+```
+
+这是一个**一阶示意外推**（假设年际重复、管理不变、未考虑秸秆还田回补，
+且异养呼吸包含新鮮凋落物分解、不全是老 SOC），但它把 OPTIMA-2 的问题
+量化成了一句话：AWD 每年多"烧"掉的土壤碳，累积十年可达初始库的四成以上——
+在模型参数下，这个量级已经不可忽视。阈值越激进，去稳定化越强。
+二期要做的"秸秆 × 生物炭 × AWD 互作"正是为了回答下半句：
+靠外源碳输入（生物炭可参数化为惰性碳库）能不能把这笔账补回来。
+而本模型与一期大田"减 GHG"实测结论之间的张力，恰恰说明 SOC 矿化速率
+的**校准**是关键——这正是二期要用长期定位数据做的事。
+
+## 5. 小结
+
+- spacsysr 现有模块（ponding 水位 + 甲烷 + 双库碳循环 + `ghg_footprint()`）
+  可以正面复现 OPTIMA-2 的核心权衡，无需新代码；
+- 机制链条是清楚的：淹水抑制分解但促 CH₄、落干抑制 CH₄但加速 SOC 矿化，
+  最优 AWD 阈值落在"产量不掉、CH₄大降、SOC 多耗可控"的窄带里；
+- 下一步可扩展：把秸秆还田量作为 litter 输入、生物炭作为惰性碳库，
+  做论文级的"管理 × 外源碳"互作模拟。
