@@ -79,8 +79,11 @@ root_weights <- function(zmid_mm, root_depth_mm) {
 #'
 #' @param weather data.frame with \code{date} (Date), \code{tmax},
 #'   \code{tmin} (deg C), \code{precip} (mm d-1); optional \code{rad}
-#'   (MJ m-2 d-1), \code{pet} (mm d-1), \code{irrig} (mm d-1, added to
-#'   precipitation).
+#'   (MJ m-2 d-1), \code{sunshine} (h d-1, converted to radiation via
+#'   Angstrom-Prescott, FAO56), \code{pet} (mm d-1), \code{irrig}
+#'   (mm d-1, added to precipitation). Radiation priority: measured
+#'   \code{rad} > \code{sunshine}-derived > Hargreaves temperature
+#'   estimate (see \code{\link{weather_complete}}).
 #' @param soil data.frame, one row per layer (see
 #'   \code{\link{soil_init}}), with \code{depth_mm}, \code{fc},
 #'   \code{wp}, \code{sat}, \code{bulk_density}, \code{ph},
@@ -111,8 +114,10 @@ root_weights <- function(zmid_mm, root_depth_mm) {
 #'   \code{n_uptake} (g N m-2 d-1), stress factors \code{f_t},
 #'   \code{f_w}, \code{f_n}, \code{pet}, \code{aet} (mm d-1),
 #'   \code{swc_root} (root-zone mean water fraction), \code{drainage},
-#'   \code{runoff} (mm d-1), \code{n2o}, \code{no} (g N m-2 d-1),
-#'   \code{n_leached}, \code{n_mineralised}, \code{n_nitrified},
+#'   \code{runoff} (mm d-1: infiltration-excess above
+#'   \code{params$infil_cap_mm} + saturation-excess; in paddy mode the
+#'   bund-overflow component), \code{n2o}, \code{no} (g N m-2 d-1),
+#'   \code{n_leached}, \code{n_runoff}, \code{n_mineralised}, \code{n_nitrified},
 #'   \code{n_denitrified} (g N m-2 d-1), \code{co2_c} (g C m-2 d-1,
 #'   heterotrophic), \code{ch4} (g CH4 m-2 d-1), \code{co2_auto_c}
 #'   (autotrophic, g C m-2 d-1), \code{co2_total_c} (g C m-2 d-1),
@@ -153,7 +158,7 @@ spacsys_lite_run <- function(weather, soil, crop = crop_default_params(),
     w_leaf = 0, w_stem = 0, w_root = 0, w_grain = 0, growth = 0,
     n_uptake = 0, f_t = 1, f_w = 1, f_n = 1,
     pet = 0, aet = 0, swc_root = 0, drainage = 0, runoff = 0,
-    n2o = 0, no = 0, n_leached = 0, n_mineralised = 0,
+    n2o = 0, no = 0, n_leached = 0, n_runoff = 0, n_mineralised = 0,
     n_nitrified = 0, n_denitrified = 0, co2_c = 0,
     ch4 = 0, co2_auto_c = 0, co2_total_c = 0, pond_mm = 0
   )
@@ -195,7 +200,8 @@ spacsys_lite_run <- function(weather, soil, crop = crop_default_params(),
       pet_in <- pet
       ## PET split into potential transpiration / soil evaporation
       w <- soil_water_step(theta, precip_in, pet_in,
-                           soil$fc, soil$wp, soil$sat, soil$depth_mm)
+                           soil$fc, soil$wp, soil$sat, soil$depth_mm,
+                           infil_cap_mm = params$infil_cap_mm)
     }
     pt <- pet_in * (1 - exp(-crop$kext * pstate$lai))
     theta <- w$theta
@@ -207,6 +213,23 @@ spacsys_lite_run <- function(weather, soil, crop = crop_default_params(),
     leach_frac <- min(w$drainage_mm / max(sum(water_mm), 1e-6), 1)
     leached <- no3[n_layer] * leach_frac
     no3[n_layer] <- no3[n_layer] - leached
+
+    ## mineral N loss with surface runoff (top layer; in paddy mode this
+    ## includes bund-overflow water exchanging with the surface soil).
+    ## Proportional to runoff / top-layer mobile water, scaled by
+    ## params$runoff_n_coef (0 = no loss, 1 = fully mixed).
+    runoff_tot <- w$runoff_mm + overflow_mm
+    n_runoff <- 0
+    if (runoff_tot > 1e-9) {
+      top_water <- max(theta[1] * soil$depth_mm[1], 1e-6)
+      f_ex <- params$runoff_n_coef * min(runoff_tot / top_water, 1)
+      n_top <- nh4[1] + no3[1]
+      n_runoff <- min(n_top * f_ex, n_top)
+      if (n_top > 0) {
+        nh4[1] <- nh4[1] - n_runoff * nh4[1] / n_top
+        no3[1] <- no3[1] - n_runoff * no3[1] / n_top
+      }
+    }
 
     ## plant N availability: max daily uptake fraction of the mineral N
     ## pool in rooted layers (single weighting -- see note below)
@@ -321,6 +344,7 @@ spacsys_lite_run <- function(weather, soil, crop = crop_default_params(),
     out$drainage[d] <- w$drainage_mm
     out$runoff[d] <- w$runoff_mm + overflow_mm
     out$n_leached[d] <- leached
+    out$n_runoff[d] <- n_runoff
     out$pond_mm[d] <- pond_mm
   }
   out

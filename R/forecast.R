@@ -92,10 +92,10 @@ synthetic_nwp <- function(actual, horizon = 10,
   ## temperature: AR(1) error with growing innovation variance
   sd_k <- temp_sd0 + temp_sd_day * lead
   e <- numeric(k)
-  e[1] <- rnorm(1, 0, sd_k[1])
+  e[1] <- stats::rnorm(1, 0, sd_k[1])
   if (k > 1) for (i in 2:k)
     e[i] <- temp_ar1 * e[i - 1] +
-      rnorm(1, 0, sd_k[i] * sqrt(max(0, 1 - temp_ar1^2)))
+      stats::rnorm(1, 0, sd_k[i] * sqrt(max(0, 1 - temp_ar1^2)))
   tmax_f <- actual$tmax + e
   tmin_f <- actual$tmin + e
   tmin_f <- pmin(tmin_f, tmax_f - 0.5)  # keep physical ordering
@@ -103,13 +103,13 @@ synthetic_nwp <- function(actual, horizon = 10,
   ## precipitation: flip occurrence, perturb amounts
   wet <- actual$precip > 0
   pflip <- pmin(pflip_day * lead, 0.3)
-  flip <- runif(k) < pflip
+  flip <- stats::runif(k) < pflip
   wet_f <- xor(wet, flip)
   wet_mean <- mean(actual$precip[wet])
   if (!is.finite(wet_mean) || wet_mean <= 0) wet_mean <- 5
   amt_sd <- amt_sd0 + amt_sd_day * lead
   base_amt <- ifelse(wet, pmax(actual$precip, 0.1), wet_mean)
-  precip_f <- ifelse(wet_f, base_amt * exp(rnorm(k, 0, amt_sd)), 0)
+  precip_f <- ifelse(wet_f, base_amt * exp(stats::rnorm(k, 0, amt_sd)), 0)
 
   data.frame(date = actual$date, tmax = tmax_f, tmin = tmin_f,
              precip = precip_f)
@@ -276,7 +276,7 @@ forecast_yield_ensemble <- function(obs, nwp, tails, soil,
   qs <- t(apply(agb_mat, 1, stats::quantile, probs = c(0.1, 0.5, 0.9)))
   agb <- data.frame(date = dates, p10 = qs[, 1], p50 = qs[, 2],
                      p90 = qs[, 3], mean = rowMeans(agb_mat),
-                     sd = apply(agb_mat, 1, sd))
+                     sd = apply(agb_mat, 1, stats::sd))
   yv <- sapply(runs, function(r) utils::tail(r$w_grain, 1))
   yq <- stats::quantile(yv, probs = c(0.1, 0.5, 0.9))
   list(runs = runs, agb = agb,

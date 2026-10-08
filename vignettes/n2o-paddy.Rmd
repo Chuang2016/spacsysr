@@ -83,3 +83,7 @@ anaerobic-fraction concept borrowed from DNDC.
 Key parameters to calibrate against chamber data: `knitri`, `kdeni`,
 `n_half`, `delta_theta_denit`, `n2o_frac_denitrif` (simplified), and
 `gd`, `ni50`, `f_n2o_max` (microbial). See `?spacsys_default_params`.
+
+For field-scale paddy N2O with a real floodwater layer (dissolved-gas
+routing, bund overflow) and batch scenario comparison, see the
+`rice-ponding` vignette (`ponding` module + `run_scenarios()`).

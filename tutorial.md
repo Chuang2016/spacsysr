@@ -19,7 +19,7 @@ Wu 2022 技术手册 v6.00）核心生物地球化学过程的 R 语言实现。
 
 包里有两条使用路线：
 
-- **独立过程函数**：70+ 个函数，每个对应手册的一个或一组方程，
+- **独立过程函数**：90 个函数，每个对应手册的一个或一组方程，
   可单独调用、单独验证（如 `pet_hargreaves()`、`denitrif_simplified()`、
   `ch4_plant_transport()`）。
 - **简化集成模型** `spacsys_lite_run()`：日步长耦合
@@ -31,9 +31,9 @@ Wu 2022 技术手册 v6.00）核心生物地球化学过程的 R 语言实现。
 
 ``` r
 # 从 GitHub 安装（私有仓库，需要权限）
-# remotes::install_github("Chuang2016/spacsysr")
+# remotes::install_github("Chuang2016/spacsysr", build_vignettes = TRUE)
 # 或本地安装
-# install.packages("spacsysr_0.4.0.tar.gz", repos = NULL, type = "source")
+# install.packages("spacsysr_0.6.1.tar.gz", repos = NULL, type = "source")
 library(spacsysr)
 ```
 
@@ -49,7 +49,10 @@ weather <- data.frame(
   date   = seq(as.Date("2026-05-01"), by = "day", length.out = n),
   tmax   = 26 + 4 * sin(2 * pi * (1:n) / n) + rnorm(n, 0, 2),
   tmin   = 16 + 3 * sin(2 * pi * (1:n) / n) + rnorm(n, 0, 1.5),
-  precip = pmax(0, rnorm(n, 3, 5))
+  precip = pmax(0, rnorm(n, 3, 5)),
+  sunshine = pmin(14, pmax(0, 8 + 3 * sin(2 * pi * (1:n) / n) + rnorm(n, 0, 2)))
+  # 日照时数 h/d（可选）：有它辐射就用 Angstrom-Prescott 公式推算，
+  # 比纯温差法更准；不给也行，自动回退
 )
 soil <- soil_init(depth_mm = c(200, 300, 500),  # 三层：厚度 mm
                   soc = c(2000, 1200, 600))     # 每层有机碳 g C/m2
@@ -58,15 +61,16 @@ out <- spacsys_lite_run(weather, soil,
                         crop = crop_default_params("maize"),
                         lat_deg = 38)
 tail(out$w_grain, 1) / 100  # 籽粒产量，t/ha
-#> [1] 6.252024
+#> [1] 3.890144
 ```
 
 `weather_complete()` 会自动补全辐射和 PET：有实测辐射直接用，
-有日照时数就用 Angstrom-Prescott 公式（FAO56）推算，
-都没有才回退到 Hargreaves 温差法；`soil_init()` 用缺省的田间持水量/萎蔫点等
+有日照时数（`sunshine` 列，h/d）就用 Angstrom-Prescott 公式（FAO56）推算，
+都没有才回退到 Hargreaves 温差法；有辐射/日照时 PET 自动切换为
+Priestley-Taylor。`soil_init()` 用缺省的田间持水量/萎蔫点等
 建好土层。输出 `out` 是日尺度数据框：物候 `dindex`、LAI、
 各器官生物量、胁迫因子 `f_t/f_w/f_n`、N2O/NO、CH4、CO2、
-淋溶、矿化……共 30 列。
+径流、淋溶、矿化……共 29 列。
 
 ## 4. 加施肥，看氮响应
 
@@ -83,7 +87,7 @@ out_fert <- spacsys_lite_run(weather, soil,
 c(no_fert = tail(out$w_grain, 1) / 100,
   fert    = tail(out_fert$w_grain, 1) / 100)
 #>  no_fert     fert 
-#> 6.252024 6.252024
+#> 3.890144 3.890144
 ```
 
 `n_inputs` 的施肥日期会被自动匹配到模拟日历上。
@@ -104,10 +108,10 @@ v0.4.0 起，`spacsys_lite_run()` 直接输出三种温室气体：
 ``` r
 fp <- ghg_footprint(out_fert)
 fp
-#>   co2_kg_ha ch4_kg_ha n2o_kg_ha ghg_co2eq_kg_ha share_co2    share_ch4
-#> 1  25593.42 0.1698578 0.1577674        25641.23 0.9981354 0.0001848208
+#>   co2_kg_ha   ch4_kg_ha n2o_kg_ha ghg_co2eq_kg_ha share_co2     share_ch4
+#> 1  21231.15 -0.02771963 0.1021141        21258.25  0.998725 -3.638012e-05
 #>     share_n2o yield_t_ha intensity_kg_co2eq_per_t_grain
-#> 1 0.001679736   6.252024                       4101.268
+#> 1 0.001311357   3.890144                       5464.644
 ```
 
 得到每公顷的 CO2、CH4、N2O（kg/ha）、CO2 当量总量、
@@ -168,16 +172,55 @@ ch4_plant_transport(f_root = 0.5, w_leaf = 80, ch4_con = 5, z = 0.1)
 #> [1] 0.01243812
 ```
 
-完整函数清单见 `?spacsysr` 或 Notion 上的函数速查表（77 个函数）。
+完整函数清单见 `?spacsysr` 或 Notion 上的函数速查表（90 个函数）。
 
-## 7. 简化假设（必读）
+## 7. 水分与氮素的去向：径流和淋溶
+
+旱地作物的水氮平衡里，`spacsys_lite_run()` 跟踪了全部主要去向：
+
+
+``` r
+c(runoff_mm   = sum(out_fert$runoff),      # 地表径流：超渗（暴雨）+ 超饱和
+  drainage_mm = sum(out_fert$drainage),    # 深层渗漏
+  n_leached   = sum(out_fert$n_leached),   # 随渗漏走的硝态氮
+  n_runoff    = sum(out_fert$n_runoff))    # 随径流走的表层矿质氮
+#>   runoff_mm drainage_mm   n_leached    n_runoff 
+#>           0           0           0           0
+```
+
+- **径流**分两部分：日降水超过 `params$infil_cap_mm`（默认 40 mm/d，
+  按质地调：砂土 ~100、壤土 ~40、粘土 ~15）的**超渗径流**，
+  加上表层超过饱和的**超饱和径流**；
+- **淋溶**：底层硝态氮随深层渗漏按混合模型流失；
+- **径流氮**：径流按 `params$runoff_n_coef` 从表层带走矿质氮
+  （输出 `n_runoff`），保证氮账本闭合。
+
+## 8. 水稻：积水层模块
+
+v0.5.0 起，`ponding` 参数开启真正的淹水模拟：田面水量平衡
+（降雨 + 灌溉 − 入渗 − 蒸发 − 漫埂溢出）、`target_mm` 自动灌溉维持目标水深、
+`bund_mm` 田埂高度（超过则溢出成径流：**田埂越高，径流越少**），
+以及水体溶存 CH4/N2O 的氧化与逸出。详见 `rice-ponding` vignette：
+
+
+``` r
+out_paddy <- spacsys_lite_run(weather, soil,
+                              crop = crop_default_params("rice"),
+                              ponding = list(target_mm = 30, bund_mm = 80),
+                              lat_deg = 38)
+```
+
+## 9. 简化假设（必读）
 
 - lite 模型是**教学/研究脚手架**：桶式水、双库碳、简化硝化/
   反硝化、RUE 生长——参数少，但别拿它做精准预测。
 - 甲烷氧化动力学参数（`vr_max` 等）手册没有给默认值，
   包里用的是示意性文献典型值，定量用之前请率定。
-- 甲烷模块无积水层、无扩散详细过程；N2O 为简化路径。
+- v0.5.0 起甲烷模块含积水层（`ponding`）与水体溶存气体过程；
+  N2O 仍为简化路径。
 - 所有简化都在各函数帮助文档的 `details` 里写明了。
 
 更多案例见 vignette：`lite-wheat`（水×氮）、`lite-rice`
-（淹水 vs 雨养）、`lite-maize`（干旱×氮互作）、`n2o-paddy`。
+（水稻淹水：积水层 vs 雨养）、`lite-maize`（干旱×氮互作）、
+`n2o-paddy`（稻田 N2O）、`rice-ponding`（积水层 + 多情景碳足迹对比）、
+`forecast-yield`（天气预报 × 滚动集合产量预报）。

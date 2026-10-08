@@ -473,3 +473,55 @@ stopifnot(nrow(tab) == 2, all(c("yield_t_ha", "ghg_co2eq_kg_ha",
   "intensity_kg_co2eq_per_t_grain") %in% names(tab)),
   tab$ch4_kg_ha[1] > tab$ch4_kg_ha[2])  # ponded emits more CH4
 ok("run_scenarios")
+
+## --- runoff: infiltration-excess + N loss, mass balance ----------------------
+sw2 <- soil_water_step(theta_vol = c(0.3, 0.3), precip_mm = 80, pet_mm = 4,
+                       fc = c(0.3, 0.3), wp = c(0.12, 0.12),
+                       sat = c(0.45, 0.45), depth_mm = c(200, 300),
+                       infil_cap_mm = 40)
+stopifnot(sw2$runoff_mm >= 40 - 1e-9)  # Hortonian component present
+## water mass balance: in = dS + aet + drainage + runoff
+dS <- sum((sw2$theta - c(0.3, 0.3)) * c(200, 300))
+stopifnot(abs(80 - (dS + sw2$aet_mm + sw2$drainage_mm + sw2$runoff_mm)) < 1e-9)
+## default Inf preserves old behaviour (saturation-excess only)
+sw3 <- soil_water_step(theta_vol = c(0.3, 0.3), precip_mm = 80, pet_mm = 4,
+                       fc = c(0.3, 0.3), wp = c(0.12, 0.12),
+                       sat = c(0.45, 0.45), depth_mm = c(200, 300))
+stopifnot(sw3$runoff_mm < 1e-9)
+ok("soil_water_step infiltration-excess runoff")
+
+## --- driver: storm N runoff + full N mass balance ----------------------------
+set.seed(3); n <- 40
+wr <- data.frame(date = seq(as.Date("2026-06-01"), by = "day", length.out = n),
+                 tmax = 30, tmin = 22, precip = 0)
+wr$precip[20] <- 90  # single intense storm
+sr <- soil_init(depth_mm = c(200, 300, 500), soc = c(2000, 1200, 600))
+fr <- data.frame(date = as.Date("2026-06-05"), nh4_add = 10, no3_add = 0)
+pr <- spacsys_default_params()
+orr <- spacsys_lite_run(wr, sr, crop = crop_default_params("maize"),
+                        params = pr, n_inputs = fr, lat_deg = 32)
+stopifnot(sum(orr$runoff) > 40, orr$n_runoff[20] > 0,
+          all(orr$n_runoff >= 0))
+## N mass balance: total losses cannot exceed inputs + initial mineral N
+## + mineralised (all loss pathways accounted: uptake, leaching, runoff,
+## N2O, NO, denitrification to N2)
+n_in <- 10
+loss_tot <- sum(orr$n_uptake) + sum(orr$n_leached) + sum(orr$n_runoff) +
+  sum(orr$n2o) + sum(orr$no) + sum(orr$n_denitrified)
+stopifnot(loss_tot <= n_in + sum(sr$nh4 + sr$no3) + sum(orr$n_mineralised) + 1e-6)
+ok("driver runoff N loss")
+
+## --- paddy: bund_mm controls overflow (higher bund -> less runoff) -----------
+set.seed(5); n <- 30
+wb <- data.frame(date = seq(as.Date("2026-06-01"), by = "day", length.out = n),
+                 tmax = 31, tmin = 23, precip = 0)
+wb$precip[15] <- 70
+sb <- soil_init(depth_mm = c(200, 300, 500), soc = c(1000, 600, 300))
+cb <- crop_default_params("rice")
+rb40 <- spacsys_lite_run(wb, sb, cb, lat_deg = 30,
+                         ponding = list(bund_mm = 40, target_mm = 30))
+rb120 <- spacsys_lite_run(wb, sb, cb, lat_deg = 30,
+                          ponding = list(bund_mm = 120, target_mm = 30))
+stopifnot(sum(rb40$runoff) > sum(rb120$runoff) + 1e-9,
+          max(rb40$pond_mm) <= 40 + 1e-9, max(rb120$pond_mm) <= 120 + 1e-9)
+ok("ponding bund_mm overflow control")

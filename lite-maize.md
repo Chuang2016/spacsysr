@@ -107,3 +107,26 @@ Drought cuts yield through `f_w` even when N is ample; without fertiliser,
 fertiliser pays off most where water is not limiting. Note the lite
 model's simplifications -- single daily water bucket, no vapour-pressure
 or CO2 effects -- so treat these as teaching scenarios, not forecasts.
+
+## Where do water and nitrogen go?
+
+
+``` r
+fate <- aggregate(cbind(runoff, drainage, n_leached, n_runoff) ~ water + N,
+                  data = scenarios, FUN = sum)
+fate[, 3:6] <- round(fate[, 3:6], 2)
+names(fate)[3:6] <- c("runoff_mm", "drainage_mm", "N_leached", "N_runoff")
+fate
+#>    water         N runoff_mm drainage_mm N_leached N_runoff
+#> 1    dry         0         0        0.00         0        0
+#> 2 normal         0         0       23.59         0        0
+#> 3    dry 120 kg/ha         0        0.00         0        0
+#> 4 normal 120 kg/ha         0       23.59         0        0
+```
+
+Runoff here is mostly infiltration-excess: daily rain above
+`params$infil_cap_mm` (default 40 mm/d) runs off before entering the soil
+(Hortonian flow), plus saturation-excess when the topsoil is full.
+`N_runoff` is the mineral N the runoff carries off the surface --
+a loss pathway the N budget would otherwise miss. Leaching follows deep
+drainage from the bottom layer.

@@ -48,7 +48,7 @@ r_awd   <- spacsys_lite_run(w, soil, crop, n_inputs = fert,
                             lat_deg = 30, ponding = FALSE)
 cat("积水天数(>1mm):", sum(r_paddy$pond_mm > 1),
     " 平均水深:", round(mean(r_paddy$pond_mm), 1), "mm\n")
-#> <U+79EF><U+6C34><U+5929><U+6570>(>1mm): 84  <U+5E73><U+5747><U+6C34><U+6DF1>: 17.6 mm
+#> 积水天数(>1mm): 84  平均水深: 17.6 mm
 for (nm in c("CH4", "N2O")) invisible(nm)
 cat(sprintf("paddy: CH4 %.1f kg/ha, N2O %.2f kg N2O/ha\n",
             sum(r_paddy$ch4) * 10, sum(r_paddy$n2o) * 10 * 44 / 28))
@@ -60,6 +60,29 @@ cat(sprintf("AWD  : CH4 %.1f kg/ha, N2O %.2f kg N2O/ha\n",
 
 持续淹水下 CH4 显著高于干湿交替（AWD），而 N2O 被抑制——
 符合稻田实测规律（持续厌氧促进产甲烷、反硝化彻底则 N2O 占比下降）。
+
+## 2.5 田埂高度：控制溢出径流的参数
+
+`bund_mm` 是田埂高度（默认 80 mm）：田面水超过它就漫埂溢出，
+计为地表径流。**田埂加高 → 溢出减少**。暴雨天对比一下：
+
+
+``` r
+w_storm <- w; w_storm$precip[60] <- 70  # 一场 70 mm 暴雨
+for (b in c(40, 80, 140)) {
+  r <- spacsys_lite_run(w_storm, soil, crop, n_inputs = fert, lat_deg = 30,
+                        ponding = list(target_mm = 30, bund_mm = b))
+  cat(sprintf("bund_mm = %3d: 暴雨日溢出径流 %.1f mm, 最高水位 %.1f mm\n",
+              b, r$runoff[60], max(r$pond_mm)))
+}
+#> bund_mm =  40: 暴雨日溢出径流 19.2 mm, 最高水位 40.0 mm
+#> bund_mm =  80: 暴雨日溢出径流 0.0 mm, 最高水位 59.2 mm
+#> bund_mm = 140: 暴雨日溢出径流 0.0 mm, 最高水位 59.2 mm
+```
+
+田埂是稻田水管理的"总开关"：矮田埂暴雨即排（防涝但肥水流失）、
+高田埂蓄水保肥（但有漫灌风险）。模型里调 `bund_mm` 即可做这种
+管理情景分析。
 
 ## 3. 多情景批量碳足迹对比
 
@@ -74,16 +97,16 @@ tab <- run_scenarios(w, soil, crop, scenarios = list(
 print(tab[, c("scenario", "yield_t_ha", "ch4_kg_ha", "n2o_kg_ha",
               "ghg_co2eq_kg_ha", "intensity_kg_co2eq_per_t_grain")],
       digits = 4)
-#>                                                   scenario yield_t_ha ch4_kg_ha
-#> 1        <U+6301><U+7EED><U+6DF9><U+6C34>+<U+65BD><U+80A5>     3.0650    9.4863
-#> 2 <U+6301><U+7EED><U+6DF9><U+6C34><U+4E0D><U+65BD><U+80A5>     0.7886    8.5545
-#> 3                                     AWD+<U+65BD><U+80A5>     3.0650    3.3116
-#> 4                        <U+96E8><U+517B>+<U+65BD><U+80A5>     1.9165    0.2455
-#>   n2o_kg_ha ghg_co2eq_kg_ha intensity_kg_co2eq_per_t_grain
-#> 1    1.5357           21283                           6944
-#> 2    0.1024           14267                          18091
-#> 3    0.8179           23790                           7762
-#> 4    0.5925           17261                           9006
+#>         scenario yield_t_ha ch4_kg_ha n2o_kg_ha ghg_co2eq_kg_ha
+#> 1  持续淹水+施肥     3.0650    9.4863    1.5357           21283
+#> 2 持续淹水不施肥     0.7886    8.5545    0.1024           14267
+#> 3       AWD+施肥     3.0650    3.3116    0.8179           23790
+#> 4      雨养+施肥     1.9165    0.2455    0.5925           17261
+#>   intensity_kg_co2eq_per_t_grain
+#> 1                           6944
+#> 2                          18091
+#> 3                           7762
+#> 4                           9006
 ```
 
 `intensity_kg_co2eq_per_t_grain`（每吨籽粒的 CO2 当量）可直接用于

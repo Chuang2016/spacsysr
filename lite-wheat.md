@@ -30,7 +30,9 @@ weather <- data.frame(
   tmin   = 10 + 4 * sin(2 * pi * (1:n) / n) + rnorm(n, 0, 1.5),
   precip = pmax(0, rnorm(n, 2, 5))
 )
-# Only Tmax/Tmin/precip are required: radiation and PET are estimated
+# Only Tmax/Tmin/precip are required: radiation and PET are estimated.
+# Add a `sunshine` column (h/d) when available for better radiation
+# via Angstrom-Prescott (FAO56); PET then uses Priestley-Taylor.
 w <- weather_complete(weather, lat_deg = 35, t_base = 2)
 head(w[c("date", "tmax", "tmin", "precip", "rad", "pet")], 3)
 #>         date     tmax     tmin   precip       rad      pet
@@ -117,3 +119,7 @@ Water shortage cuts yield sharply through `f_w`; added fertiliser N is
 taken up (luxury uptake when soil N already suffices) and only raises
 yield once soil supply becomes limiting. All fluxes conserve mass --
 see `?spacsys_lite_run` for the simplifications adopted.
+
+> 提示：`weather` 加一列 `sunshine`（日照时数，h/d）即可让辐射
+> 改用 Angstrom-Prescott 公式（FAO56）推算、PET 改用 Priestley-Taylor，
+> 比纯温差法更准——中国气象站一般都有日照记录。

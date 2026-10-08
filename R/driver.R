@@ -44,6 +44,14 @@ spacsys_default_params <- function() {
     ch4_on = FALSE,
     vr_max = 0.01, vs_max = 1e-4, kr_ch4 = 1, ks_ch4 = 1, ko2 = 1,
     anoxic_resp = 0.5, f_ch4_co2 = 0.3, eta_inhib = 0.01,
+    ## lite surface runoff (driver_lite)
+    infil_cap_mm = 40,  # max daily infiltration (mm d-1); rain above
+                        # this runs off (Hortonian). Tune by texture:
+                        # sand ~100, loam ~40, clay ~15
+    runoff_n_coef = 1.0,  # N extraction coefficient for surface runoff:
+                         # fraction of top-layer mineral N interacting
+                         # with runoff water (0 = no N loss, 1 = fully
+                         # mixed); calibrate 0-1
     ## lite crop N uptake (driver_lite)
     up_frac_max = 0.5,  # max fraction of root-zone mineral N taken up
                        # per day (uptake kinetics; lite model only)

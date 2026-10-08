@@ -8,8 +8,10 @@
 #' Cascades water through soil layers: precipitation enters the top
 #' layer, water above field capacity drains downward (bottom-layer
 #' drainage = deep percolation), and evapotranspiration is drawn
-#' top-down limited by water above wilting point. Surface runoff is
-#' generated when the top layer exceeds saturation.
+#' top-down limited by water above wilting point. Surface runoff has
+#' two components: (1) infiltration-excess (Hortonian) runoff when
+#' daily precipitation exceeds \code{infil_cap_mm}, and (2)
+#' saturation-excess runoff when the top layer exceeds saturation.
 #'
 #' @param theta_vol volumetric water content per layer (fraction, length
 #'   = number of layers).
@@ -19,13 +21,26 @@
 #' @param wp wilting-point water content per layer (fraction).
 #' @param sat saturated water content per layer (fraction).
 #' @param depth_mm layer depths (mm).
+#' @param infil_cap_mm maximum daily infiltration (mm d-1);
+#'   precipitation above this runs off before entering the soil.
+#'   Default \code{Inf} = no Hortonian runoff (saturation-excess only).
+#'   Typical: sand ~100, loam ~40, clay ~15; calibrate to soil texture.
 #' @return A list with \code{theta} (updated water contents),
 #'   \code{drainage_mm} (deep percolation), \code{runoff_mm} and
 #'   \code{aet_mm} (actual ET).
 #' @export
 soil_water_step <- function(theta_vol, precip_mm, pet_mm, fc, wp, sat,
-                            depth_mm) {
+                            depth_mm, infil_cap_mm = Inf) {
   n <- length(theta_vol)
+
+  ## (1) infiltration-excess (Hortonian) runoff: rain above the daily
+  ## infiltration capacity never enters the soil
+  runoff <- 0
+  if (is.finite(infil_cap_mm) && precip_mm > infil_cap_mm) {
+    runoff <- precip_mm - infil_cap_mm
+    precip_mm <- infil_cap_mm
+  }
+
   water <- theta_vol * depth_mm          # mm per layer
   water[1] <- water[1] + precip_mm
 
@@ -40,11 +55,10 @@ soil_water_step <- function(theta_vol, precip_mm, pet_mm, fc, wp, sat,
     }
   }
 
-  ## saturation check top-down (runoff only from top layer)
-  runoff <- 0
+  ## (2) saturation-excess runoff (only from top layer)
   excess_top <- water[1] - sat[1] * depth_mm[1]
   if (excess_top > 0) {
-    runoff <- excess_top
+    runoff <- runoff + excess_top
     water[1] <- water[1] - excess_top
   }
 

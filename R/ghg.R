@@ -57,7 +57,7 @@ ghg_footprint <- function(out, grain_col = "w_grain", ...) {
     share_n2o = ghg_co2eq(0, n2o_ha, 0, ...) / total
   )
   if (!is.null(grain_col) && grain_col %in% names(out)) {
-    yld <- tail(out[[grain_col]], 1) / 100  # g m-2 -> t ha-1
+    yld <- utils::tail(out[[grain_col]], 1) / 100  # g m-2 -> t ha-1
     res$yield_t_ha <- yld
     res$intensity_kg_co2eq_per_t_grain <- if (yld > 0) total / yld else NA_real_
   }
